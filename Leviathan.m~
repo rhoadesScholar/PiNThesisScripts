@@ -19,18 +19,18 @@ classdef Leviathan < handle
         end
         
         function [P_a, Ys_a, m] = getPax_Ysa(obj, x)
-            ind = find(strcmp(obj.Vars(1), x));
+            ind = find(strcmp(obj.Vars(1, :), x));
             
             tempInd = num2cell(ind*ones(1, obj.Dim));
             tempInd(2:end) = {':'};
             xCall = obj.getCellCall(tempInd);%IF THIS FAILS: Try newInds'
             tempInd(1) = {':'};
             allCall = obj.getCellCall(tempInd);%IF THIS FAILS: Try newInds'
-            eval(sprintf('P_a = obj.getSum(%s)/obj.getSum(%s);', xCall, allCall));
+            eval(sprintf('P_a = nansum(%s, ''all'')/nansum(%s, ''all'');', xCall, allCall));
             eval(sprintf('xInds = find(%s > 0);', xCall));
             
             subCall = obj.getSubCall();
-            eval(sprintf('[%s]  = ind2sub(size(P_a), find(P_a > 0);', subCall));
+            eval(sprintf('[%s]  = ind2sub(size(%s), xInds);', subCall, xCall));
             
             m = length(sub(1,:));
             Ys_a = cell(m, obj.Dim);
@@ -92,8 +92,8 @@ classdef Leviathan < handle
             inds = arrayfun(@(i) find(strcmp(theseVars(i,:), vars(i))), 1:length(vars));
             emptInds = isempty(inds);
             newVars = vars;
-            newVars(emptInds) = 'unknown';
-            newInds = cellfun(@(yl, ya) find(strcmp(yl, ya)), theseVars, newVars);
+            newVars(emptInds) = {'unknown'};
+            newInds = arrayfun(@(i) find(strcmp(theseVars(i,:), vars(i))), 1:length(vars));
             return
         end
         
@@ -114,12 +114,5 @@ classdef Leviathan < handle
             return
         end
 
-        function x = getSum(x)
-            x = nansum(x, 'all');
-%             while length(x) > 1
-%                 x = nansum(x);
-%             end
-            return
-        end
     end
 end

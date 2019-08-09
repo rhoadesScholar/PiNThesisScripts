@@ -30,7 +30,8 @@ classdef Leviathan < handle
             eval(sprintf('xInds = find(%s > 0);', xCall));
             
             subCall = obj.getSubCall();
-            eval(sprintf('[%s]  = ind2sub(size(P_a), find(P_a > 0));', subCall));
+            eval(sprintf('[%s]  = ind2sub(size(%s), xInds);', subCall, xCall));
+            sub(1, :) = ind;
             
             m = length(sub(1,:));
             Ys_a = cell(m, obj.Dim);

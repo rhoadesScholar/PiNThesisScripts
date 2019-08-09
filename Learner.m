@@ -47,24 +47,12 @@ classdef Learner < handle
         function obj = observe(obj, vars)
             [inds, emptInds, newVars] = obj.getInds(vars);
             
-%             inds = cellfun(@(yl, ya) find(strcmp(yl, ya)), obj.Vars, vars);
-%             emptInds = isempty(inds);
-%             
-% %             inds = cell(obj.Dim, 1);
-% %             emptInds = cell(obj.Dim, 1);
-% %             for i = 1:obj.Dim
-% %                 inds(i) = find(cellfun(@(a) strcmp(vars(i), a), obj.Vars(i)));
-% %                 emptInds(i) = isempty(inds(i));
-% %             end
-            
             if any(emptInds)
-%                 newVars = vars;
-%                 newVars(emptInds) = 'unknown';
-%                 obj = obj.observe(newVars);
                 obj.observe(newVars);
-                for i = emptInds
-                    obj.Vars(i, end + 1) = vars(i);
-                    inds(i) = length(obj.Vars(i));
+                for i = find(emptInds)
+                    len = sum(cellfun(@(x) ~isempty(x), obj.Vars(i,:)));
+                    obj.Vars(i, len + 1) = vars(i);
+                    inds{i} = len + 1;
                 end
             end
             
@@ -104,11 +92,11 @@ classdef Learner < handle
             else
                 theseVars = obj.Vars;
             end
-            inds = arrayfun(@(i) find(strcmp(theseVars(i,:), vars(i))), 1:length(vars));
-            emptInds = isempty(inds);
+            inds = arrayfun(@(i) find(strcmp(theseVars(i,:), vars(i))), 1:length(vars), 'UniformOutput', false);
+            emptInds = cellfun(@(x) isempty(x), inds);
             newVars = vars;
             newVars(emptInds) = {'unknown'};
-            newInds = arrayfun(@(i) find(strcmp(theseVars(i,:), vars(i))), 1:length(vars));
+            newInds = arrayfun(@(i) find(strcmp(theseVars(i,:), newVars(i))), 1:length(newVars));
             return
         end
         

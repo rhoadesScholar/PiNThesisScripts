@@ -1,7 +1,7 @@
 classdef Learner < handle
     %Copyright 2019: Jeffrey Rhoades, Harvard University
     %Defined for learning P(x|y1,...yn) where x is the first variable
-    %definied in Vars
+    %defined in Vars
     
     properties
         Obs%Used for conditional probability table
@@ -10,7 +10,7 @@ classdef Learner < handle
     end
     
     methods
-        function obj = ObservationTally(dim)
+        function obj = Learner(dim)
             if ~exist('dim', 'var') || isempty(dim)
                 dim = 3;
             end
@@ -22,46 +22,41 @@ classdef Learner < handle
             obj.Obs = 1;%let initiation of learner equate to an observation that there are unknown X | unknown {Y1...Yn}
         end
         
-        function P_l = getPx_ys(obj, vars)
-            [inds, emptInds, newVars, newInds] = getInds(obj, vars);
-            w_c = getCountWeight(obj, newInds);
+        function [P_l, P_x] = getPx_ys(obj, vars, P_x)
+            [~, ~, ~, newInds] = obj.getInds(vars);
+            w_c = obj.getCountWeight(newInds);
             
-            condCall = getCellCall(obj, newInds);%IF THIS FAILS: Try newInds'
-            setCall = getCellCall(obj, [':' num2cell(newInds(2:end))]);
-            eval(sprintf('P_cond = getSum(%s)/getSum(%s)', condCall, setCall));
+            condCall = obj.getCellCall(newInds);%IF THIS FAILS: Try newInds'
+            setCall = obj.getCellCall([':' num2cell(newInds(2:end))]);
+            eval(sprintf('P_cond = nansum(%s, ''all'')/nansum(%s, ''all'');', condCall, setCall));
             
-            tempInds = 
-            xCall = getCellCall(obj, [':' num2cell(newInds(2:end))]);%IF THIS FAILS: Try newInds'
-            eval(sprintf('P_x = getSum(%s)/getSum(%s)', condCall, setCall));
+            if ~exist('P_x', 'var')||isempty(P_x)
+                tempInds = num2cell(newInds);
+                tempInds(2:end) = {':'};
+                xCall = obj.getCellCall(tempInds);%IF THIS FAILS: Try newInds'
+                tempInds(1) = {':'};
+                allCall = obj.getCellCall(tempInds);%IF THIS FAILS: Try newInds'
+                eval(sprintf('P_x = nansum(%s, ''all'')/nansum(%s, ''all'');', xCall, allCall));
+            end
             
+            P_l = (w_c * P_cond) + (1 - w_c)*P_x;
             
             return
         end
         
         function obj = observe(obj, vars)
-            [inds, emptInds, newVars] = getInds(obj, vars);
-            
-%             inds = cellfun(@(yl, ya) find(strcmp(yl, ya)), obj.Vars, vars);
-%             emptInds = isempty(inds);
-%             
-% %             inds = cell(obj.Dim, 1);
-% %             emptInds = cell(obj.Dim, 1);
-% %             for i = 1:obj.Dim
-% %                 inds(i) = find(cellfun(@(a) strcmp(vars(i), a), obj.Vars(i)));
-% %                 emptInds(i) = isempty(inds(i));
-% %             end
+            [inds, emptInds, newVars] = obj.getInds(vars);
             
             if any(emptInds)
-%                 newVars = vars;
-%                 newVars(emptInds) = 'unknown';
-                obj = observe(obj, newVars);
-                for i = emptInds
-                    obj.Vars(i, end + 1) = vars(i);
-                    inds(i) = length(obj.Vars(i));
+                obj.observe(newVars);
+                for i = find(emptInds)
+                    len = sum(cellfun(@(x) ~isempty(x), obj.Vars(i,:)));
+                    obj.Vars(i, len + 1) = vars(i);
+                    inds{i} = sum(cellfun(@(x) ~isempty(x), obj.Vars(i,:)));
                 end
             end
             
-            cellCall = getCellCall(obj, inds);
+            cellCall = obj.getCellCall(inds);
             
             try
                 eval(sprintf('%s = %s + 1;', cellCall, cellCall));
@@ -85,30 +80,30 @@ classdef Learner < handle
 % %                 inds = cellfun(@(yl, ya) find(strcmp(yl, ya)), Yl, tempVars);
 %             end
             
-            cellCall = getCellCall(obj, [':' num2cell(inds(2:end))]);%IF THIS FAILS: Try inds'
-            eval(sprintf('E = getSum(%s)', cellCall));
+            cellCall = obj.getCellCall([':' num2cell(inds(2:end))]);%IF THIS FAILS: Try inds'
+            eval(sprintf('E = nansum(%s, ''all'');', cellCall));
             w_c = 1 - 2^-E;
             return
         end
         
         function [inds, emptInds, newVars, newInds] = getInds(obj, vars)
-            if length(vars) < length(obj.Vars)
-                theseVars = obj.Vars(2:end);
+            if length(vars) < size(obj.Vars,1)
+                theseVars = obj.Vars(2:end,:);
             else
                 theseVars = obj.Vars;
             end
-            inds = cellfun(@(yl, ya) find(strcmp(yl, ya)), theseVars, vars);
-            emptInds = isempty(inds);
+            inds = arrayfun(@(i) find(strcmp(theseVars(i,:), vars(i))), 1:length(vars), 'UniformOutput', false);
+            emptInds = cellfun(@(x) isempty(x), inds);
             newVars = vars;
-            newVars(emptInds) = 'unknown';
-            newInds = cellfun(@(yl, ya) find(strcmp(yl, ya)), theseVars, newVars);
+            newVars(emptInds) = {'unknown'};
+            newInds = arrayfun(@(i) find(strcmp(theseVars(i,:), newVars(i))), 1:length(newVars));
             return
         end
         
         function cellCall = getCellCall(obj, inds)
             cellCall = 'obj.Obs(';
             for i = 1:obj.Dim
-                if iscell(ins)
+                if iscell(inds)
                     thisInd = inds{i};
                 else
                     thisInd = inds(i);
@@ -122,11 +117,5 @@ classdef Learner < handle
             return
         end
 
-        function x = getSum(x)
-            while length(x) > 1
-                x = nansum(x);
-            end
-            return
-        end
     end
 end
