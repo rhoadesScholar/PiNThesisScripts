@@ -1,4 +1,4 @@
-function showLearning(Obs, setNames)
+function data = showLearning(Obs, setNames)
     for o = 1:size(Obs, 3)
         obs = Obs(:, :, o);
         for i = 1:size(obs, 2)
@@ -15,14 +15,15 @@ function showLearning(Obs, setNames)
         Is = NaN(size(obs, 1), 1);
         Hs = NaN(size(obs, 1), 1);
         for i = 1:size(obs, 1)
+            learner.observe(obs(i, :));
             x = obs(i, 1); %assumes X (dependent/output variable) is always first
             [P_ax, Ys_a, m] = teacher.getPax_Ysa(x);
             [P_LAx, P_lx] = getProbLAx(Ys_a, m, learner);
-            Is(i) = -nansum(P_LAx * P_ax * log2(P_LAx / P_lx));
+            Is(i) = nansum(P_LAx * P_ax * log2(P_LAx / P_lx));
             Hs(i) = -nansum(P_LAx * P_ax * log2(P_LAx * P_ax));
             learner.observe(obs(i, :));
         end
-        Ds = Is ./ Hs;
+        Ds = 1 - (Is ./ Hs);
         
         subplot(2, 2, 1)
         plot(Is, 'LineWidth', 3);
@@ -34,10 +35,20 @@ function showLearning(Obs, setNames)
         ylabel('H(L,A)');
         hold on;
 
-        subplot(2, 2, 3:4)
+        subplot(2, 2, 3)
         plot(Ds, 'LineWidth', 3);
         ylabel('D(L,A)');
         hold on;
+        
+        subplot(2, 2, 4)
+        plot(diff(Ds), 'LineWidth', 3);
+        ylabel('\DeltaD(L,A)');
+        hold on;
+        
+        data.allIs{o} = Is;
+        data.allHs{o} = Hs;
+        data.allDs{o} = Ds;
+        data.alldDs{o} = diff(Ds);
     end
     
     if exist('setNames', 'var') && ~isempty(setNames)
@@ -51,7 +62,8 @@ function [P_LAx, P_x] = getProbLAx(vars, m, learner)
             [P_l, P_x] = learner.getPx_ys(vars(i, :));
             P_LAx = P_l;
         else
-            P_LAx = P_LAx + learner.getPx_ys(vars(i, :), P_x);
+            [P_l, ~] = learner.getPx_ys(vars(i, :));
+            P_LAx = P_LAx + P_l;
         end
     end
     P_LAx = P_LAx/m;
