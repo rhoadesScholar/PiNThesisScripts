@@ -1,0 +1,132 @@
+classdef Learner < handle
+    %Copyright 2019: Jeffrey Rhoades, Harvard University
+    %Defined for learning P(x|y1,...yn) where x is the first variable
+    %definied in Vars
+    
+    properties
+        Obs%Used for conditional probability table
+        Vars
+        Dim
+    end
+    
+    methods
+        function obj = ObservationTally(dim)
+            if ~exist('dim', 'var') || isempty(dim)
+                dim = 3;
+            end
+            obj.Dim = dim;
+            obj.Vars = cell(dim, 1);
+            for i = 1:dim
+                obj.Vars(i) = {'unknown'};
+            end
+            obj.Obs = 1;%let initiation of learner equate to an observation that there are unknown X | unknown {Y1...Yn}
+        end
+        
+        function P_l = getPx_ys(obj, vars)
+            [inds, emptInds, newVars, newInds] = getInds(obj, vars);
+            w_c = getCountWeight(obj, newInds);
+            
+            condCall = getCellCall(obj, newInds);%IF THIS FAILS: Try newInds'
+            setCall = getCellCall(obj, [':' num2cell(newInds(2:end))]);
+            eval(sprintf('P_cond = getSum(%s)/getSum(%s)', condCall, setCall));
+            
+            tempInds = 
+            xCall = getCellCall(obj, [':' num2cell(newInds(2:end))]);%IF THIS FAILS: Try newInds'
+            eval(sprintf('P_x = getSum(%s)/getSum(%s)', condCall, setCall));
+            
+            
+            return
+        end
+        
+        function obj = observe(obj, vars)
+            [inds, emptInds, newVars] = getInds(obj, vars);
+            
+%             inds = cellfun(@(yl, ya) find(strcmp(yl, ya)), obj.Vars, vars);
+%             emptInds = isempty(inds);
+%             
+% %             inds = cell(obj.Dim, 1);
+% %             emptInds = cell(obj.Dim, 1);
+% %             for i = 1:obj.Dim
+% %                 inds(i) = find(cellfun(@(a) strcmp(vars(i), a), obj.Vars(i)));
+% %                 emptInds(i) = isempty(inds(i));
+% %             end
+            
+            if any(emptInds)
+%                 newVars = vars;
+%                 newVars(emptInds) = 'unknown';
+                obj = observe(obj, newVars);
+                for i = emptInds
+                    obj.Vars(i, end + 1) = vars(i);
+                    inds(i) = length(obj.Vars(i));
+                end
+            end
+            
+            cellCall = getCellCall(obj, inds);
+            
+            try
+                eval(sprintf('%s = %s + 1;', cellCall, cellCall));
+            catch
+                eval(sprintf('%s = 1;', cellCall));
+            end
+                
+        end
+        
+        function w_c = getCountWeight(obj, inds)
+%             [inds, emptInds, ~, newInds] = getInds(obj, ys);
+%             
+% %             Yl = obj.Vars(2:end);
+% %             inds = cellfun(@(yl, ya) find(strcmp(yl, ya)), Yl, ys);
+% %             emptInds = isempty(inds);
+%             
+%             if any(emptInds)
+%                 inds = newInds;
+% %                 tempVars = ys;
+% %                 tempVars(emptInds) = 'unknown';
+% %                 inds = cellfun(@(yl, ya) find(strcmp(yl, ya)), Yl, tempVars);
+%             end
+            
+            cellCall = getCellCall(obj, [':' num2cell(inds(2:end))]);%IF THIS FAILS: Try inds'
+            eval(sprintf('E = getSum(%s)', cellCall));
+            w_c = 1 - 2^-E;
+            return
+        end
+        
+        function [inds, emptInds, newVars, newInds] = getInds(obj, vars)
+            if length(vars) < length(obj.Vars)
+                theseVars = obj.Vars(2:end);
+            else
+                theseVars = obj.Vars;
+            end
+            inds = cellfun(@(yl, ya) find(strcmp(yl, ya)), theseVars, vars);
+            emptInds = isempty(inds);
+            newVars = vars;
+            newVars(emptInds) = 'unknown';
+            newInds = cellfun(@(yl, ya) find(strcmp(yl, ya)), theseVars, newVars);
+            return
+        end
+        
+        function cellCall = getCellCall(obj, inds)
+            cellCall = 'obj.Obs(';
+            for i = 1:obj.Dim
+                if iscell(ins)
+                    thisInd = inds{i};
+                else
+                    thisInd = inds(i);
+                end
+                if i~= obj.Dim
+                    cellCall = [cellCall num2str(thisInd) ', '];
+                else
+                    cellCall = [cellCall num2str(thisInd) ')'];
+                end
+            end
+            return
+        end
+
+        function x = getSum(x)
+            while length(x) > 1
+                x = nansum(x);
+            end
+            return
+        end
+    end
+end
