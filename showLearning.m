@@ -1,12 +1,10 @@
-function showLearning(Obs, Vars)
+function showLearning(Obs, setNames)
     for o = 1:size(Obs, 3)
         obs = Obs(:, :, o);
-        if ~exist('Vars', 'var') || isempty(Vars)
-            for i = 1:size(obs, 2)
-                tempVars = obs(:, i);
-                tempVars = unique(tempVars);
-                Vars(i, 1:length(tempVars)) = tempVars;
-            end
+        for i = 1:size(obs, 2)
+            tempVars = obs(:, i);
+            tempVars = unique(tempVars);
+            Vars(i, 1:length(tempVars)) = tempVars;
         end
 
         Dim = size(Vars, 1);
@@ -40,6 +38,10 @@ function showLearning(Obs, Vars)
         plot(Ds, 'LineWidth', 3);
         ylabel('D(L,A)');
         hold on;
+    end
+    
+    if exist('setNames', 'var') && ~isempty(setNames)
+        legend(setNames)
     end
 end
 
