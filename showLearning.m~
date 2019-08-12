@@ -1,9 +1,6 @@
-function data = showLearning(Obs, setNames, before, silent)
+function data = showLearning(Obs, setNames, before)
     if ~exist('before', 'var')||isempty(before)
         before = false;
-    end
-    if ~exist('silent', 'var')||isempty(silent)
-        silent = true;
     end
     for o = 1:size(Obs, 3)
         obs = Obs(:, :, o);
@@ -83,31 +80,25 @@ function data = showLearning(Obs, setNames, before, silent)
         ylabel('\DeltaD(L,A)');
         hold on;
         
-        if ~silent
-            allbIs(o, :) = bIs;
-            allbHs(o, :) = bHs;
-            allbDs(o, :) = bDs;
-
-            allaIs(o, :) = aIs;
-            allaHs(o, :) = aHs;
-            allaDs(o, :) = aDs;
-
-            alldifDs(o, :) = diff(Ds);
-        end
+        allbIs(o, :) = bIs;
+        allbHs(o, :) = bHs;
+        allbDs(o, :) = bDs;
+        
+        allaIs(o, :) = aIs;
+        allaHs(o, :) = aHs;
+        allaDs(o, :) = aDs;
+        
+        alldifDs(o, :) = diff(Ds);
     end
-    if ~silent
-        data.allbIs = allbIs;
-        data.allbHs = allbHs;
-        data.allbDs = allbDs;
-
-        data.allaIs = allaIs;
-        data.allaHs = allaHs;
-        data.allaDs = allaDs;
-
-        data.alldifDs = alldifDs;
-    else
-        data = {};
-    end
+    data.allbIs = allbIs;
+    data.allbHs = allbHs;
+    data.allbDs = allbDs;
+    
+    data.allaIs = allaIs;
+    data.allaHs = allaHs;
+    data.allaDs = allaDs;
+    
+    data.alldifDs = alldifDs;
     
     if exist('setNames', 'var') && ~isempty(setNames)
         legend(setNames)
@@ -125,8 +116,8 @@ function [P_ax, P_lx, P_LAx] = getProbs(teacher, learner)
             theseYs = squeeze(allYs(j, :, :))';
         else
             theseYs = squeeze(allYs(j, :, :));
-        end
-        [P_LAx(j), P_lx(j)] = getProbLAx(theseYs, learner);
+            e
+        [P_LAx(j), P_lx(j)] = getProbLAx(squeeze(allYs(j, :, :)), learner);
     end
     return
 end
@@ -137,7 +128,7 @@ function [P_LAx, P_lx] = getProbLAx(vars, learner)
             [P_l, P_lx] = learner.getPx_ys(vars(i, :));
             P_LAx = P_l;
         else
-            [P_l, ~] = learner.getPx_ys(vars(i, :), P_lx);
+            [P_l, ~] = learner.getPx_ys(vars(i, :));
             P_LAx = P_LAx + P_l;
         end
     end
