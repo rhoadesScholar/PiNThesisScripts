@@ -7,6 +7,9 @@ classdef Leviathan < handle
         Obs%Used for conditional probability table
         Vars
         Dim
+        P_ax
+        Ys_a
+        Xs
     end
     
     methods
@@ -15,6 +18,10 @@ classdef Leviathan < handle
             obj.Vars = Vars;
             for i = 1:size(Obs, 1)
                 obj.observe(Obs(i, :));
+            end
+            obj.Xs = unique(Obs(:,1));%assumes X (dependent/output variable) is always first
+            for i = 1:length(obj.Xs)
+                [obj.P_ax(i), obj.Ys_a(i, :, :)] = obj.getPax_Ysa(obj.Xs(i));
             end
         end
         

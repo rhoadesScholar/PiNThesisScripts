@@ -1,71 +1,132 @@
-function data = showLearning(Obs, setNames)
-    for o = 1:size(Obs, 3)
+function data = showLearning(Obs, setNames, before)
+    if ~exist('before', 'var')||isempty(before)
+        before = false;
+    end
+    parfor o = 1:size(Obs, 3)
         obs = Obs(:, :, o);
+        Vars = cell(size(obs, 2), 1);
         for i = 1:size(obs, 2)
             tempVars = obs(:, i);
             tempVars = unique(tempVars);
             Vars(i, 1:length(tempVars)) = tempVars;
         end
 
-        Dim = size(Vars, 1);
-
         teacher = Leviathan(Vars, obs);
-        learner = Learner(Dim);
+        learner = Learner(teacher.Dim);
 
-        Is = NaN(size(obs, 1), 1);
-        Hs = NaN(size(obs, 1), 1);
+        bIs = NaN(size(obs, 1), 1);
+        bHs = NaN(size(obs, 1), 1);
+        aIs = NaN(size(obs, 1), 1);
+        aHs = NaN(size(obs, 1), 1);
         for i = 1:size(obs, 1)
+            [P_ax, P_lx, P_LAx] = getProbs(teacher, learner);           
+            bIs(i) = nansum(P_LAx .* P_ax .* log2(P_LAx ./ P_lx));
+%             bIs(i) = nansum(P_LAx * P_ax * log2(1 / P_lx));
+            bHs(i) = -nansum(P_LAx .* P_ax .* log2(P_LAx .* P_ax));
+            
             learner.observe(obs(i, :));
-            x = obs(i, 1); %assumes X (dependent/output variable) is always first
-            [P_ax, Ys_a, m] = teacher.getPax_Ysa(x);
-            [P_LAx, P_lx] = getProbLAx(Ys_a, m, learner);
-            Is(i) = nansum(P_LAx * P_ax * log2(P_LAx / P_lx));
-            Hs(i) = -nansum(P_LAx * P_ax * log2(P_LAx * P_ax));
-            learner.observe(obs(i, :));
+            
+            [P_ax, P_lx, P_LAx] = getProbs(teacher, learner);            
+            aIs(i) = nansum(P_LAx .* P_ax .* log2(P_LAx ./ P_lx));
+%             aIs(i) = nansum(P_LAx .* P_ax .* log2(1 ./ P_lx));
+            aHs(i) = -nansum(P_LAx .* P_ax .* log2(P_LAx .* P_ax));
         end
-        Ds = 1 - (Is ./ Hs);
+        bDs = 1 - (bIs ./ bHs);
+        aDs = 1 - (aIs ./ aHs);
         
-        subplot(2, 2, 1)
+        %% plot
+        if before
+            Is = bIs;
+            Hs = bHs;
+            Ds = bDs;
+        else
+            Is = aIs;
+            Hs = aHs;
+            Ds = aDs;
+        end
+        
+        subplot(2, 4, 1)
         plot(Is, 'LineWidth', 3);
         ylabel('I(L;A)');
         hold on;
+        
+        subplot(2, 4, 5)
+        plot(aIs - bIs, 'LineWidth', 3);
+        ylabel('\deltaI(L;A)');
+        hold on;
 
-        subplot(2, 2, 2)
+        subplot(2, 4, 2)
         plot(Hs, 'LineWidth', 3);
         ylabel('H(L,A)');
         hold on;
+        
+        subplot(2, 4, 6)
+        plot(aHs - bHs, 'LineWidth', 3);
+        ylabel('\deltaH(L,A)');
+        hold on;
 
-        subplot(2, 2, 3)
+        subplot(2, 4, 3)
         plot(Ds, 'LineWidth', 3);
         ylabel('D(L,A)');
         hold on;
         
-        subplot(2, 2, 4)
+        subplot(2, 4, 4)
+        plot(aDs - bDs, 'LineWidth', 3);
+        ylabel('\deltaD(L,A)');
+        hold on;
+        
+        subplot(2, 4, 7:8)
         plot(diff(Ds), 'LineWidth', 3);
         ylabel('\DeltaD(L,A)');
         hold on;
         
-        data.allIs{o} = Is;
-        data.allHs{o} = Hs;
-        data.allDs{o} = Ds;
-        data.alldDs{o} = diff(Ds);
+        allbIs(o) = bIs;
+        allbHs(o) = bHs;
+        allbDs(o) = bDs;
+        
+        allaIs(o) = aIs;
+        allaHs(o) = aHs;
+        allaDs(o) = aDs;
+        
+        alldifDs(o) = diff(Ds);
     end
+    data.allbIs(o) = allbIs;
+    data.allbHs(o) = allbHs;
+    data.allbDs(o) = allbDs;
+    
+    data.allaIs(o) = allaIs;
+    data.allaHs(o) = allaHs;
+    data.allaDs(o) = allaDs;
+    
+    data.alldifDs(o) = alldifDs;
     
     if exist('setNames', 'var') && ~isempty(setNames)
         legend(setNames)
+        data.setNames = setNames;
     end
 end
 
-function [P_LAx, P_x] = getProbLAx(vars, m, learner)
-    for i = 1:m
-        if ~exist('P_x', 'var')||isempty(P_x)
-            [P_l, P_x] = learner.getPx_ys(vars(i, :));
+function [P_ax, P_lx, P_LAx] = getProbs(teacher, learner)
+    P_ax = teacher.P_ax;
+    allYs = teacher.Ys_a;
+    P_LAx = NaN(length(Xs), 1);
+    P_lx = NaN(length(Xs), 1);
+    parfor j = 1:length(Xs)
+        [P_LAx(j), P_lx(j)] = getProbLAx(allYs(j, :, :), learner);
+    end
+    return
+end
+
+function [P_LAx, P_lx] = getProbLAx(vars, learner)
+    for i = 1:size(vars, 1)
+        if ~exist('P_lx', 'var')||isempty(P_lx)
+            [P_l, P_lx] = learner.getPx_ys(vars(i, :));
             P_LAx = P_l;
         else
             [P_l, ~] = learner.getPx_ys(vars(i, :));
             P_LAx = P_LAx + P_l;
         end
     end
-    P_LAx = P_LAx/m;
+    P_LAx = P_LAx/size(vars, 1);
     return
 end
