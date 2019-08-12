@@ -2,7 +2,7 @@ function data = showLearning(Obs, setNames, before)
     if ~exist('before', 'var')||isempty(before)
         before = false;
     end
-    parfor o = 1:size(Obs, 3)
+    for o = 1:size(Obs, 3)
         obs = Obs(:, :, o);
         Vars = cell(size(obs, 2), 1);
         for i = 1:size(obs, 2)
@@ -90,15 +90,15 @@ function data = showLearning(Obs, setNames, before)
         
         alldifDs(o) = diff(Ds);
     end
-    data.allbIs(o) = allbIs;
-    data.allbHs(o) = allbHs;
-    data.allbDs(o) = allbDs;
+    data.allbIs = allbIs;
+    data.allbHs = allbHs;
+    data.allbDs = allbDs;
     
-    data.allaIs(o) = allaIs;
-    data.allaHs(o) = allaHs;
-    data.allaDs(o) = allaDs;
+    data.allaIs = allaIs;
+    data.allaHs = allaHs;
+    data.allaDs = allaDs;
     
-    data.alldifDs(o) = alldifDs;
+    data.alldifDs = alldifDs;
     
     if exist('setNames', 'var') && ~isempty(setNames)
         legend(setNames)
@@ -109,10 +109,10 @@ end
 function [P_ax, P_lx, P_LAx] = getProbs(teacher, learner)
     P_ax = teacher.P_ax;
     allYs = teacher.Ys_a;
-    P_LAx = NaN(length(Xs), 1);
-    P_lx = NaN(length(Xs), 1);
-    parfor j = 1:length(Xs)
-        [P_LAx(j), P_lx(j)] = getProbLAx(allYs(j, :, :), learner);
+    P_LAx = NaN(length(teacher.Xs), 1);
+    P_lx = NaN(length(teacher.Xs), 1);
+    for j = 1:length(teacher.Xs)
+        [P_LAx(j), P_lx(j)] = getProbLAx(squeeze(allYs(j, :, :)), learner);
     end
     return
 end

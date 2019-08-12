@@ -20,8 +20,11 @@ classdef Leviathan < handle
                 obj.observe(Obs(i, :));
             end
             obj.Xs = unique(Obs(:,1));%assumes X (dependent/output variable) is always first
+            obj.P_ax = zeros(length(obj.Xs), 1);
+            obj.Ys_a = cell(length(obj.Xs), 1, obj.Dim);
             for i = 1:length(obj.Xs)
-                [obj.P_ax(i), obj.Ys_a(i, :, :)] = obj.getPax_Ysa(obj.Xs(i));
+                [obj.P_ax(i), theseYs] = obj.getPax_Ysa(obj.Xs(i));
+                obj.Ys_a(i, 1:size(theseYs, 1), :) = theseYs;
             end
         end
         

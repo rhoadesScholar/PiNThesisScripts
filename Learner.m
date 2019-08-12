@@ -4,7 +4,7 @@ classdef Learner < handle
     %defined in Vars
     
     properties
-        Obs%Used for conditional probability table
+        Obs%Used for conditional probability table (= sum of occurences)
         Vars
         Dim
     end
