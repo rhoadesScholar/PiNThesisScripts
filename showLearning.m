@@ -6,7 +6,7 @@ function data = showLearning(Obs, setNames, before, silent)
         silent = true;
     end
     for o = 1:size(Obs, 3)
-        obs = Obs(:, :, o);
+        obs = squeeze(Obs(o, :, :));
         Vars = cell(size(obs, 2), 1);
         for i = 1:size(obs, 2)
             tempVars = obs(:, i);
