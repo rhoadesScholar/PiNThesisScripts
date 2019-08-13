@@ -39,7 +39,7 @@ classdef Learner < handle
                 eval(sprintf('P_x = nansum(%s, ''all'')/nansum(%s, ''all'');', xCall, allCall));
             end
             
-            P_l = (w_c * P_cond) + (1 - w_c)*P_x;
+            P_l = nansum([(w_c * P_cond), (1 - w_c)*P_x]);
             
             return
         end
