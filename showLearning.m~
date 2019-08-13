@@ -1,9 +1,12 @@
-function data = showLearning(Obs, setNames, before)
+function data = showLearning(Obs, setNames, before, silent)
     if ~exist('before', 'var')||isempty(before)
         before = false;
     end
+    if ~exist('silent', 'var')||isempty(silent)
+        silent = true;
+    end
     for o = 1:size(Obs, 3)
-        obs = Obs(:, :, o);
+        obs = squeeze(Obs(o, :, :));
         Vars = cell(size(obs, 2), 1);
         for i = 1:size(obs, 2)
             tempVars = obs(:, i);
@@ -80,25 +83,32 @@ function data = showLearning(Obs, setNames, before)
         ylabel('\DeltaD(L,A)');
         hold on;
         
-        allbIs(o, :) = bIs;
-        allbHs(o, :) = bHs;
-        allbDs(o, :) = bDs;
+        if ~silent
+            allbIs(o, :) = bIs;
+            allbHs(o, :) = bHs;
+            allbDs(o, :) = bDs;
+
+            allaIs(o, :) = aIs;
+            allaHs(o, :) = aHs;
+            allaDs(o, :) = aDs;
+
+            alldifDs(o, :) = diff(Ds);
+        end
         
-        allaIs(o, :) = aIs;
-        allaHs(o, :) = aHs;
-        allaDs(o, :) = aDs;
-        
-        alldifDs(o, :) = diff(Ds);
     end
-    data.allbIs = allbIs;
-    data.allbHs = allbHs;
-    data.allbDs = allbDs;
-    
-    data.allaIs = allaIs;
-    data.allaHs = allaHs;
-    data.allaDs = allaDs;
-    
-    data.alldifDs = alldifDs;
+    if ~silent
+        data.allbIs = allbIs;
+        data.allbHs = allbHs;
+        data.allbDs = allbDs;
+
+        data.allaIs = allaIs;
+        data.allaHs = allaHs;
+        data.allaDs = allaDs;
+
+        data.alldifDs = alldifDs;
+    else
+        data = {};
+    end
     
     if exist('setNames', 'var') && ~isempty(setNames)
         legend(setNames)
@@ -116,8 +126,8 @@ function [P_ax, P_lx, P_LAx] = getProbs(teacher, learner)
             theseYs = squeeze(allYs(j, :, :))';
         else
             theseYs = squeeze(allYs(j, :, :));
-            e
-        [P_LAx(j), P_lx(j)] = getProbLAx(squeeze(allYs(j, :, :)), learner);
+        end
+        [P_LAx(j), P_lx(j)] = getProbLAx(theseYs, learner);
     end
     return
 end
@@ -128,7 +138,7 @@ function [P_LAx, P_lx] = getProbLAx(vars, learner)
             [P_l, P_lx] = learner.getPx_ys(vars(i, :));
             P_LAx = P_l;
         else
-            [P_l, ~] = learner.getPx_ys(vars(i, :));
+            [P_l, ~] = learner.getPx_ys(vars(i, :), P_lx);
             P_LAx = P_LAx + P_l;
         end
     end

@@ -24,7 +24,7 @@ function data = runDeterministicLeviathan(N, M)
     labelStr{1} = '1:1';
 
     %% modulo M data structure
-    mInd = 0;
+    mInd = 2;
     for m = M
         P_a = zeros(m, length(Y), length(Z));
         X = cell2mat(arrayfun(@(y) mod(nansum([ones(size(Y))*y; Z], 1), m)+1, Y, 'UniformOutput', false));%mod(nansum([Y; Z], 1), m)+1;
@@ -37,12 +37,12 @@ function data = runDeterministicLeviathan(N, M)
                 k = k + 1;
             end
         end
-        Obs(mInd + 1, 1:size(obs, 1), 1:size(obs,2)) = obs;
+        Obs(mInd, 1:size(obs, 1), 1:size(obs,2)) = obs;
+        labelStr{mInd} = ['Mod' num2str(m)];
         mInd = mInd + 1;
-        labelStr{mInd+1} = ['Mod' num2str(m)];
     end
 
     %% run it
 
-    data = showLearning(Obs, {'1:1' 'Mod2' 'Mod7'}, true);
+    data = showLearning(Obs, labelStr, true);
 end

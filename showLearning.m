@@ -1,4 +1,5 @@
 function data = showLearning(Obs, setNames, before, silent)
+    fig = figure;
     if ~exist('before', 'var')||isempty(before)
         before = false;
     end
@@ -6,6 +7,7 @@ function data = showLearning(Obs, setNames, before, silent)
         silent = true;
     end
     for o = 1:size(Obs, 3)
+        tic
         obs = squeeze(Obs(o, :, :));
         Vars = cell(size(obs, 2), 1);
         for i = 1:size(obs, 2)
@@ -83,6 +85,8 @@ function data = showLearning(Obs, setNames, before, silent)
         ylabel('\DeltaD(L,A)');
         hold on;
         
+        drawnow
+        
         if ~silent
             allbIs(o, :) = bIs;
             allbHs(o, :) = bHs;
@@ -94,6 +98,8 @@ function data = showLearning(Obs, setNames, before, silent)
 
             alldifDs(o, :) = diff(Ds);
         end
+        
+        toc
     end
     if ~silent
         data.allbIs = allbIs;
