@@ -6,7 +6,7 @@ function data = showLearning(Obs, setNames, before, silent)
     if ~exist('silent', 'var')||isempty(silent)
         silent = true;
     end
-    for o = 1:size(Obs, 3)
+    for o = 1:size(Obs, 1)
         tic
         obs = squeeze(Obs(o, :, :));
         Vars = cell(size(obs, 2), 1);
@@ -23,18 +23,29 @@ function data = showLearning(Obs, setNames, before, silent)
         bHs = NaN(size(obs, 1), 1);
         aIs = NaN(size(obs, 1), 1);
         aHs = NaN(size(obs, 1), 1);
+        U = NaN(size(obs, 1), 1);
+        f = waitbar(0, sprintf('Learning (%i/%i)...', o, size(Obs, 1)));
+%         Inds = randperm(size(obs, 1));
+%         for i = Inds
         for i = 1:size(obs, 1)
-            [P_ax, P_lx, P_LAx] = getProbs(teacher, learner);           
-            bIs(i) = nansum(P_LAx .* P_ax .* log2(P_LAx ./ P_lx));
-%             bIs(i) = nansum(P_LAx * P_ax * log2(1 / P_lx));
-            bHs(i) = -nansum(P_LAx .* P_ax .* log2(P_LAx .* P_ax));
+%             waitbar(find(Inds == i)/length(Inds), f);
+            waitbar(i/size(obs, 1), f);
+            if i ==1
+%             if i == Inds(1)
+                [P_ax, P_lx, P_LAx] = getProbs(teacher, learner);
+                bIs(i) = nansum(P_LAx .* P_ax .* log2(P_LAx ./ P_lx));
+                bHs(i) = -nansum(P_LAx .* P_ax .* log2(P_LAx .* P_ax));
+            else
+                bIs(i) = aIs(i-1);
+                bHs(i) = aHs(i-1);
+            end
             
             learner.observe(obs(i, :));
             
             [P_ax, P_lx, P_LAx] = getProbs(teacher, learner);            
             aIs(i) = nansum(P_LAx .* P_ax .* log2(P_LAx ./ P_lx));
-%             aIs(i) = nansum(P_LAx .* P_ax .* log2(1 ./ P_lx));
             aHs(i) = -nansum(P_LAx .* P_ax .* log2(P_LAx .* P_ax));
+            U(i) = nansum(log2(P_LAx));
         end
         bDs = 1 - (bIs ./ bHs);
         aDs = 1 - (aIs ./ aHs);
@@ -50,39 +61,56 @@ function data = showLearning(Obs, setNames, before, silent)
             Ds = aDs;
         end
         
+        figure(fig)
+        
         subplot(2, 4, 1)
-        plot(Is, 'LineWidth', 3);
+        plot(Is, 'LineWidth', 2);
         ylabel('I(L;A)');
+        set(gca, 'XScale', 'log')
         hold on;
         
         subplot(2, 4, 5)
-        plot(aIs - bIs, 'LineWidth', 3);
+        plot(aIs - bIs, 'LineWidth', 2);
         ylabel('\deltaI(L;A)');
+        set(gca, 'XScale', 'log')
         hold on;
 
         subplot(2, 4, 2)
-        plot(Hs, 'LineWidth', 3);
+        plot(Hs, 'LineWidth', 2);
         ylabel('H(L,A)');
+        set(gca, 'XScale', 'log')
         hold on;
         
         subplot(2, 4, 6)
-        plot(aHs - bHs, 'LineWidth', 3);
+        plot(aHs - bHs, 'LineWidth', 2);
         ylabel('\deltaH(L,A)');
+        set(gca, 'XScale', 'log')
         hold on;
 
         subplot(2, 4, 3)
-        plot(Ds, 'LineWidth', 3);
+        plot(Ds, 'LineWidth', 2);
         ylabel('D(L,A)');
+        set(gca, 'XScale', 'log')
         hold on;
         
         subplot(2, 4, 4)
-        plot(aDs - bDs, 'LineWidth', 3);
-        ylabel('\deltaD(L,A)');
+%         plot(aDs - bDs, 'LineWidth', 2);
+%         ylabel('\deltaD(L,A)');
+        plot(U, 'LineWidth', 2);
+        ylabel('log(P(L|A))');
+        set(gca, 'XScale', 'log')
         hold on;
         
-        subplot(2, 4, 7:8)
-        plot(diff(Ds), 'LineWidth', 3);
+        subplot(2, 4, 7)
+        plot(diff(Ds), 'LineWidth', 2);
         ylabel('\DeltaD(L,A)');
+        set(gca, 'XScale', 'log')
+        hold on;
+        
+        subplot(2, 4, 8)
+        plot(cumsum(diff(Ds), 'omitnan'), 'LineWidth', 2);
+        ylabel('cumsum: \DeltaD(L,A) ');
+        set(gca, 'XScale', 'log')
         hold on;
         
         drawnow
@@ -100,6 +128,7 @@ function data = showLearning(Obs, setNames, before, silent)
         end
         
         toc
+        close(f)
     end
     if ~silent
         data.allbIs = allbIs;

@@ -1,4 +1,4 @@
-function [data, Obs] = runDeterministicLeviathan(N, M, P, repeats)
+function data = runDeterministicLeviathan(N, M, P)
     if nargin < 2
         M = [2, 7];
     end
@@ -18,15 +18,13 @@ function [data, Obs] = runDeterministicLeviathan(N, M, P, repeats)
             k = k + 1;
         end
     end
-    obs = obs(randperm(size(obs,1)), :);
-    for r = 1:repeats
-        obs = [obs; obs(randperm(size(obs,1)), :)];
-    end
+    % obs(:, 1) = split(num2str(Y));
+    % obs(:, 1) = split(num2str(Z));
     Obs(1, 1:size(obs, 1), 1:size(obs,2)) = obs;
     labelStr{1} = '1:1';
 
     %% modulo M data structure
-    Ind = 2;
+    mInd = 2;
     for m = M
 %         P_a = zeros(m, length(Y), length(Z));
         X = cell2mat(arrayfun(@(y) mod(nansum([ones(size(Y))*y; Z], 1), m)+1, Y, 'UniformOutput', false));%mod(nansum([Y; Z], 1), m)+1;
@@ -39,25 +37,17 @@ function [data, Obs] = runDeterministicLeviathan(N, M, P, repeats)
                 k = k + 1;
             end
         end
-        
-        obs = obs(randperm(size(obs,1)), :);
-        for r = 1:repeats
-            obs = [obs; obs(randperm(size(obs,1)), :)];
-        end
-        Obs(Ind, 1:size(obs, 1), 1:size(obs,2)) = obs;
-        labelStr{Ind} = ['Mod' num2str(m)];
-        Ind = Ind + 1;
+        Obs(mInd, 1:size(obs, 1), 1:size(obs,2)) = obs;
+        labelStr{mInd} = ['Mod' num2str(m)];
+        mInd = mInd + 1;
     end
     
     %% Percentage distribution
     if nargin > 2
+        pInd = 2;
         for p = P'
-            p = p(~isnan(p));
-            p = p./sum(p);
-            X = cell2mat(arrayfun(@(i) ones(1, round(p(i)*length(Y)*length(Z)))*i, 1:length(p), 'UniformOutput', false));
-            while length(X) < length(Y)*length(Z)
-                X{end + 1} = num2str(length(p));
-            end
+            p = round(p./nansum(p));
+            X = cell2mat(arrayfun(@(y) mod(nansum([ones(size(Y))*y; Z], 1), p)+1, Y, 'UniformOutput', false));%
             obs = cell(length(X), 3);
             k = 1;
             for i = 1:length(Y)
@@ -66,17 +56,13 @@ function [data, Obs] = runDeterministicLeviathan(N, M, P, repeats)
                     k = k + 1;
                 end
             end
-            obs = obs(randperm(size(obs,1)), :);
-            for r = 1:repeats
-                obs = [obs; obs(randperm(size(obs,1)), :)];
-            end
-            Obs(Ind, 1:size(obs, 1), 1:size(obs,2)) = obs;
-            labelStr{Ind} = ['Prob[' num2str(p') ']'];
-            Ind = Ind + 1;
+            Obs(pInd, 1:size(obs, 1), 1:size(obs,2)) = obs;
+            labelStr{pInd} = ['Prob' num2str(p)];
+            pInd = pInd + 1;
         end
     end
 
     %% run it
 
-    data = showLearning(Obs, labelStr, {}, false);%before (boolean), silent (boolean)
+    data = showLearning(Obs, labelStr, true);
 end
