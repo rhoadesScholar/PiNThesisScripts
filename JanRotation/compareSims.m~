@@ -1,0 +1,12 @@
+function compareSims()
+    staticVarStr = '';
+    
+    flexVarName = '';
+    flexVarValues = {};%must be cell array of arrays
+    variationNum = numel(flexVarValues);
+    colors = linspecer(variationNum);
+    for v = 1:variationNum
+        thisFlexArg = [flexVarName '=' num2str(flexVarValues{v}) ';'];
+        argStr = [staticVarStr, ';', thisFlexArg, 
+    end
+end
