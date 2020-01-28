@@ -1,4 +1,3 @@
-# using Plots
 using PyPlot
 using Distributions
 using Random
@@ -25,37 +24,38 @@ function runSim(muInit, A, C, oldMu, oldVar, sigmaEye, sigmaVest, a, inNoise, en
     return err
 end
 
-function plotshade(y, err, x, alpha, color, width)
-    f = fill_between(x, y+err, y-err,color=color, alpha=alpha)
+function plotshade(y, err, x, alpha, color, width, label)
+    f = fill_between(x[1:length(y)], y+err, y-err,color=color, alpha=alpha)
 
     # f.Annotation.LegendInformation.IconDisplayStyle = "off"
-    plot(x,y,color=color,linewidth = width) ## change color | linewidth to adjust mean line()
+    p = plot(x[1:length(y)],y,color=color[:],linewidth = width, label=label) ## change color | linewidth to adjust mean line()
+    # @show p
 end
 
-function plotRMSE(RMSE, sems, dt, color)
+function plotRMSE(RMSE, sems, dt, color, label)
     endI = size(RMSE,2)-1
-
+    # gcf()
     subplot(2, 2, 1)
-    plotshade(RMSE[1,:], sems[1,:], 0:dt:endI*dt, .3, color, 2)
+    plotshade(RMSE[1,:], sems[1,:], 0:dt:endI*dt, .3, color, 2, label)
     xlabel("time")
     ylabel("root mean square error")
     title("Position RMSE")
 
     subplot(2, 2, 3)
-    plotshade(RMSE[2,:], sems[2,:], 0:dt:endI*dt, .3, color, 2)
+    plotshade(RMSE[2,:], sems[2,:], 0:dt:endI*dt, .3, color, 2, label)
     xlabel("time")
     ylabel("root mean square error")
     title("Object Distance RMSE")
 
     subplot(2, 2, 4)
-    plotshade(RMSE[3,:], sems[3,:], 0:dt:endI*dt, .3, color, 2)
+    plotshade(RMSE[3,:], sems[3,:], 0:dt:endI*dt, .3, color, 2, label)
     xlabel("time")
     ylabel("root mean square error")
     title("Velocity RMSE")
     return
 end
 
-function runBatchSim(argStr)
+function runBatchSim(argS)
     # pyplot()
 
     #Batch Settings
@@ -74,13 +74,13 @@ function runBatchSim(argStr)
     sigmaEye = 1
 
     #Plot Serrings
-    color = [0 0 1]
 
-    try
-        eval(argStr)
-    catch
-        println("No argStr supplied.")
-    end
+    # try
+        [eval(argS[v]) for v in 1:length(argS)]
+    # catch
+        # println("No argS supplied.")
+        # color = [0 0 1]
+    # end
 
     sigmaExpected = [sigmaEye 0; 0 sigmaVest]/dt
     endI = Integer(ceil(endT/dt))
@@ -99,8 +99,7 @@ function runBatchSim(argStr)
     end
     RMSE = sqrt.(dropdims(mean(errs, dims=3), dims=3))
     sems = dropdims(std(errs;mean=RMSE,dims=3)/sqrt(N), dims=3)
-
-    plotRMSE(RMSE, sems, dt, color)
+    plotRMSE(RMSE, sems, dt, color, label)
 
     return errs
 end

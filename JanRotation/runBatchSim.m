@@ -12,16 +12,20 @@ function errs = runBatchSim(argStr)
     a = 1;
     endT = 500;
     dt = .5;
-    sigmaVest = 1;
     sigmaEye = 1;
     objInitPosVar = 100;
     objInitMovVar = 50;
+    sigmaVest = 1;
     
     %Plot Serrings
     color = 'b';
     
     eval(argStr);
     
+    priorVar = [a*sigmaEye, 0, 0, 0; ...
+                0, a*objInitPosVar, 0, 0; ...
+                0, 0, a*objInitMovVar, 0; ...
+                0, 0, 0, a*sigmaVest];
     sigmaExpected = [sigmaEye 0; 0 sigmaVest]/dt;
     endI = ceil(endT/dt)+1;
 
@@ -35,7 +39,7 @@ function errs = runBatchSim(argStr)
     errs = NaN([size(muInit,1),ceil(endT/dt)+1,N]);
     for n = 1:N%SHOULD BE PARFOR (if could start pool correctly...)
         oldMu = muInit;
-        oldVar = [a*sigmaEye, 0, 0, 0; 0, a*objInitPosVar, 0, 0; 0, 0, a*objInitMovVar, 0; 0, 0, 0, a*sigmaVest];
+        oldVar = priorVar;
         errs(:,:,n) = runSim();
     end
     RMSE = sqrt(nanmean(errs,3));
@@ -48,8 +52,12 @@ function errs = runBatchSim(argStr)
     
     function err = runSim()
         err = NaN([size(muInit,1),ceil(endT/dt)+1]);
+        oldZ = zeros(size(muInit));
         for v = 1:numel(muInit)
-            oldZ = muInit + [sqrt(a*sigmaEye)*[randn(), randn()]; sqrt(a*objInitPosVar)*[randn(), randn()]; sqrt(a*objInitMovVar)*[randn(), randn()]; sqrt(a*sigmaVest)*[randn(), randn()]];
+            [r, ~] = ind2sub(size(muInit), v);
+            oldZ(v) = muInit(v) + sqrt(oldVar(r,r))*randn();
+        end
+%             oldZ = muInit + [sqrt(a*sigmaEye)*[randn(), randn()]; sqrt(a*objInitPosVar)*[randn(), randn()]; sqrt(a*objInitMovVar)*[randn(), randn()]; sqrt(a*sigmaVest)*[randn(), randn()]];
         err(:,1) = sum((muInit - oldZ).^2,2); %FIRST ENTRY IS RMSE BEFORE FIRST UPDATE
         for i = 2:endI
             %Get actual latent
