@@ -26,7 +26,6 @@ end
 SimOpts(num::Int64) = SimOpts(ones(num,1))
 SimOpts(static::StaticWorld) = SimOpts(ones(size(static.A,1)))
 SimOpts(sigmas::Array{Float64,1}) = SimOpts(sigmas::Array{Float64,1}, 1, 1000)
-SimOpts(base::SimOpts, ind::Int64, sig::Number) = SimOpts(setindex!(base.sigmas, sig, ind), base.a, base.N)
 
 struct PlotOpts
     label::String
