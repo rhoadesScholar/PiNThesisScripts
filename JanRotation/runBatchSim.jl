@@ -9,14 +9,14 @@ struct StaticWorld
     A::Array{Float64,2}
     C::Array{Float64,2}
     muPrior::Array{Float64,2}
-    endT::Number
-    dt::Number
+    endT::Float64
+    dt::Float64
     endI::Int
 end
-StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2}, endT::Number, dt::Number) =
-    StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2}, endT::Number, dt::Number, Integer(ceil(endT/dt)))
+StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2}, endT::Float64, dt::Float64) =
+    StaticWorld(A, C, muPrior, endT, dt, Integer(ceil(endT/dt)))
 StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2}) =
-    StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2}, 500, .5, 1000)
+    StaticWorld(A, C, muPrior, 500., .5, 1000)
 
 struct SimOpts
     sigmas::Array{Float64,1}
@@ -25,7 +25,7 @@ struct SimOpts
 end
 SimOpts(num::Int64) = SimOpts(ones(num,1))
 SimOpts(static::StaticWorld) = SimOpts(ones(size(static.A,1)))
-SimOpts(sigmas::Array{Float64,1}) = SimOpts(sigmas::Array{Float64,1}, 1, 1000)
+SimOpts(sigmas::Array{Float64,1}) = SimOpts(sigmas::Array{Float64,1}, 1, 500)
 
 struct PlotOpts
     label::String
@@ -73,76 +73,75 @@ struct FullWorld
     endT::Float64
     dt::Float64
     endI::Int128
+    allT::Array{Float64,1}
 end
 FullWorld(static::StaticWorld, simOpts::SimOpts) =
     FullWorld(static::StaticWorld, InitWorld(static::StaticWorld, simOpts::SimOpts), simOpts.sigmas, simOpts.a)
 FullWorld(static::StaticWorld, init::InitWorld, sigmas::Array{Float64,1}, a::Float64) =
-    FullWorld(a, sigmas, init.sigmaIn, init.noise, init.Ks, init.Vars, static.A, static.C, static.muPrior, static.endT, static.dt, static.endI)
+    FullWorld(a, sigmas, init.sigmaIn, init.noise, init.Ks, init.Vars,
+                static.A, static.C, static.muPrior, static.endT, static.dt, static.endI,
+                Array{Float64,1}(0:static.dt:static.endI*static.dt))
 
 function runSim(kworld::FullWorld)
     Z = kworld.muPrior + vcat([sqrt(kworld.a*s)*randn(size(kworld.muPrior,2)) for s in kworld.sigmas]'...);
     Zs = [(kworld.A^t)*Z for t in 0:kworld.endI]
-    Ys = [kworld.C*z + rand!(kworld.noise, zeros(size(kworld.C*Z))) for z in Zs]
+    Ys = [kworld.C*z + rand!(kworld.noise, similar(kworld.C*Z)) for z in Zs]
 
-    err = zeros(size(kworld.muPrior,1),kworld.endI+1)*NaN
+    rse = zeros(size(kworld.muPrior,1),kworld.endI+1)*NaN
     oldMu = kworld.muPrior
-    err[:,1] = sum((oldMu - Zs[1]).^2,dims=2)
+    rse[:,1] = sum((oldMu - Zs[1]).^2,dims=2)
     for i = 2:kworld.endI+1
         #Get observations
         # Y = kworld.C*kworld.Zs[i] + rand!(kworld.noise, zeros(size(kworld.C*kworld.Zs[i])))
         oldMu = kworld.A*oldMu + kworld.Ks[i]*(Ys[i]-kworld.C*kworld.A*oldMu);
-        err[:,i] = sum((oldMu - Zs[i]).^2,dims=2)
+        rse[:,i] = sqrt.(sum((oldMu - Zs[i]).^2,dims=2))#convert to distance from components
     end
-    return err
+    return rse
 end
 
-function plotshade(y, err, x, opts::PlotOpts)
-    f = fill_between(x[1:length(y)], y+err, y-err,color=opts.color, alpha=opts.alpha)
-
-    # f.Annotation.LegendInformation.IconDisplayStyle = "off"
+function plotshade(y::Array{Float64,1}, err::Array{Float64,1}, x::Array{Float64,1}, opts::PlotOpts)
+    f = fill_between(x[1:length(y)], y+err, y-err,color=opts.color, alpha=opts.alpha, linestyle="-.", hatch="/")
     p = plot(x[1:length(y)],y,color=opts.color[:],linewidth = opts.width, label=opts.label) ## change color | linewidth to adjust mean line()
-    # @show p
 end
 
-function plotRMSE(RMSE, sems, dt, opts::PlotOpts)
-    endI = size(RMSE,2)-1
+function plotRMSE(RMSE::Array{Float64,2}, eVars::Array{Float64,2}, mVars::Array{Float64,2}, allT::Array{Float64,1}, opts::PlotOpts)
 
     subplot(2, 2, 1)
-    plotshade(RMSE[1,:], sems[1,:], 0:dt:endI*dt, opts)
+    plotshade(RMSE[1,:], eVars[1,:], allT, opts)
+    fill_between(allT, RMSE[1,:]+mVars[1,:], RMSE[1,:]-mVars[1,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
     xlabel("time")
     ylabel("root mean square error")
     title("Position RMSE")
 
     subplot(2, 2, 2)
-    plotshade(RMSE[2,:], sems[2,:], 0:dt:endI*dt, opts)
+    plotshade(RMSE[2,:], eVars[2,:], allT, opts)
+    fill_between(allT, RMSE[2,:]+mVars[2,:], RMSE[2,:]-mVars[2,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
     xlabel("time")
     ylabel("root mean square error")
     title("Object Distance RMSE")
 
     subplot(2, 2, 3)
-    plotshade(RMSE[4,:], sems[4,:], 0:dt:endI*dt, opts)
+    plotshade(RMSE[4,:], eVars[4,:], allT, opts)
+    fill_between(allT, RMSE[4,:]+mVars[4,:], RMSE[4,:]-mVars[4,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
     xlabel("time")
     ylabel("root mean square error")
     title("Velocity RMSE")
 
-    # subplot(2, 2, 4)
-    # plotshade(RMSE[4,:], sems[4,:], 0:dt:endI*dt, opts)
-    # xlabel("time")
-    # ylabel("root mean square error")
-    # title("Variance RMSD")
     return
 end
 
 function runBatchSim(plotOpts::PlotOpts, static::StaticWorld, simOpts::SimOpts)
     kworld = FullWorld(static, simOpts)
 
-    errs = zeros(size(static.muPrior,1),static.endI+1,simOpts.N)*NaN
+    rses = zeros(size(static.muPrior,1),static.endI+1,simOpts.N)*NaN
     for n = 1:simOpts.N#SHOULD BE PARFOR [if could start pool correctly...]
-        errs[:,:,n] = runSim(kworld)
+        rses[:,:,n] = runSim(kworld)
     end
-    RMSE = sqrt.(dropdims(mean(errs, dims=3), dims=3))
-    sems = dropdims(std(errs;mean=RMSE,dims=3)/sqrt(simOpts.N), dims=3)
-    plotRMSE(RMSE, sems, static.dt, plotOpts)
+    RMSE = dropdims(mean(rses, dims=3), dims=3)
+    # sems = dropdims(std(rses; mean=RMSE,dims=3)/sqrt(simOpts.N), dims=3)
+    eVars = dropdims(var(rses; mean=RMSE,dims=3), dims=3)
+    mVars = hcat([diag(M) for M in kworld.Vars]...)
+    plotRMSE(RMSE, eVars, mVars, kworld.allT, plotOpts)
 
-    return errs
+    return rses
 end
