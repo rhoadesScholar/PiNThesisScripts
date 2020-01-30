@@ -37,20 +37,36 @@ PlotOpts(label::String) = PlotOpts(label::String, [0,0,1], 2, .3)
 PlotOpts(label::String, color::Array{Float64,1}) = PlotOpts(label::String, color::Array{Float64,1}, 2, .3)
 
 struct InitWorld
-    Z::Array{Float64,2}
-    Var::Array{Float64,2}
-    sigmaPrior::Array{Float64,2}
+    sigmaIn::Array{Float64,2}
+    noise
+    Ks::Array{Array{Float64,2},1}
+    Vars::Array{Array{Float64,2},1}
 end
-InitWorld(static::StaticWorld, simOpts::SimOpts) = InitWorld(
-    static.muPrior + vcat([sqrt(simOpts.a*s)*randn(size(static.muPrior,2)) for s in simOpts.sigmas]'...),
+InitWorld(static::StaticWorld, simOpts::SimOpts) = InitWorld(static,
     diagm(simOpts.a*simOpts.sigmas),
-    static.C*(diagm(simOpts.a*simOpts.sigmas))*static.C'/static.dt)
+    (static.C*(diagm(simOpts.sigmas))*static.C')/static.dt)
+InitWorld(static::StaticWorld, initVar::Array{Float64,2}, sigmaIn::Array{Float64,2}) = InitWorld(
+        sigmaIn, MvNormal(zeros(size(sigmaIn,1)), sigmaIn), getKalman(static, initVar, sigmaIn)...)
+
+function getKalman(static::StaticWorld, initVar::Array{Float64,2}, sigmaIn::Array{Float64,2})
+    Vars = Array{Array{Float64,2}, 1}(undef, static.endI+1)
+    Ks = Array{Array{Float64,2}, 1}(undef, static.endI+1)
+    Vars[1] = initVar
+    #Get filter
+    for i = 2:static.endI+1
+        Ks[i] = (static.A*Vars[i-1]*static.A'*static.C')/(static.C*static.A*Vars[i-1]*static.A'*static.C' + sigmaIn)
+        Vars[i] = (I - Ks[i]*static.C)*static.A*Vars[i-1]*static.A'
+    end
+    return Ks, Vars
+end
 
 struct FullWorld
-    Zs::Array{Array{Float64,2},1}
-    initVar::Array{Float64,2}
-    sigmaPrior::Array{Float64,2}
+    a::Float64
+    sigmas::Array{Float64,1}
+    sigmaIn::Array{Float64,2}
     noise
+    Ks::Array{Array{Float64,2},1}
+    Vars::Array{Array{Float64,2},1}
     A::Array{Float64,2}
     C::Array{Float64,2}
     muPrior::Array{Float64,2}
@@ -58,27 +74,24 @@ struct FullWorld
     dt::Float64
     endI::Int128
 end
-FullWorld(static::StaticWorld, init::InitWorld) =
-    FullWorld([(static.A^t)*init.Z for t in 0:static.endI], init.Var, init.sigmaPrior,
-    MvNormal(zeros(size(init.sigmaPrior,1)), init.sigmaPrior),
-    static.A, static.C, static.muPrior, static.endT, static.dt, static.endI)
 FullWorld(static::StaticWorld, simOpts::SimOpts) =
-    FullWorld(static::StaticWorld, InitWorld(static::StaticWorld, simOpts::SimOpts))
+    FullWorld(static::StaticWorld, InitWorld(static::StaticWorld, simOpts::SimOpts), simOpts.sigmas, simOpts.a)
+FullWorld(static::StaticWorld, init::InitWorld, sigmas::Array{Float64,1}, a::Float64) =
+    FullWorld(a, sigmas, init.sigmaIn, init.noise, init.Ks, init.Vars, static.A, static.C, static.muPrior, static.endT, static.dt, static.endI)
 
 function runSim(kworld::FullWorld)
+    Z = kworld.muPrior + vcat([sqrt(kworld.a*s)*randn(size(kworld.muPrior,2)) for s in kworld.sigmas]'...);
+    Zs = [(kworld.A^t)*Z for t in 0:kworld.endI]
+    Ys = [kworld.C*z + rand!(kworld.noise, zeros(size(kworld.C*Z))) for z in Zs]
+
     err = zeros(size(kworld.muPrior,1),kworld.endI+1)*NaN
-    oldVar = kworld.initVar
     oldMu = kworld.muPrior
-    err[:,1] = sum((oldMu - kworld.Zs[1]).^2,dims=2)
+    err[:,1] = sum((oldMu - Zs[1]).^2,dims=2)
     for i = 2:kworld.endI+1
         #Get observations
-        Y = C*kworld.Zs[i] + rand!(kworld.noise,zeros(size(C*kworld.Zs[i])))
-
-        #Get filter()
-        K = kworld.A*oldVar*kworld.A'*kworld.C'/(kworld.C*kworld.A*oldVar*kworld.A'*kworld.C' + kworld.sigmaPrior)
-        oldVar = (I - K*kworld.C)*kworld.A*oldVar*kworld.A'
-        oldMu = kworld.A*oldMu + K*(Y-kworld.C*kworld.A*oldMu);
-        err[:,i] = sum((oldMu - kworld.Zs[i]).^2,dims=2)
+        # Y = kworld.C*kworld.Zs[i] + rand!(kworld.noise, zeros(size(kworld.C*kworld.Zs[i])))
+        oldMu = kworld.A*oldMu + kworld.Ks[i]*(Ys[i]-kworld.C*kworld.A*oldMu);
+        err[:,i] = sum((oldMu - Zs[i]).^2,dims=2)
     end
     return err
 end
@@ -100,17 +113,23 @@ function plotRMSE(RMSE, sems, dt, opts::PlotOpts)
     ylabel("root mean square error")
     title("Position RMSE")
 
-    subplot(2, 2, 3)
+    subplot(2, 2, 2)
     plotshade(RMSE[2,:], sems[2,:], 0:dt:endI*dt, opts)
     xlabel("time")
     ylabel("root mean square error")
     title("Object Distance RMSE")
 
-    subplot(2, 2, 4)
+    subplot(2, 2, 3)
     plotshade(RMSE[4,:], sems[4,:], 0:dt:endI*dt, opts)
     xlabel("time")
     ylabel("root mean square error")
     title("Velocity RMSE")
+
+    # subplot(2, 2, 4)
+    # plotshade(RMSE[4,:], sems[4,:], 0:dt:endI*dt, opts)
+    # xlabel("time")
+    # ylabel("root mean square error")
+    # title("Variance RMSD")
     return
 end
 

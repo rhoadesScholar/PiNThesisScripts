@@ -14,13 +14,13 @@ muPrior = [0. 0.;
            0. 0.;
            1. 0.]
 endT = 500
-sigmas = [1., 100, 50, 1]
+sigmas = [1., 100., 0., 1.]
 
 static = StaticWorld(A, C, muPrior, endT, dt)
 
-flexSigValues = [0., 1000]
-flexSigInd = 4
-flexVarName = "sigmaVest"
+flexSigValues = [.001, 1, 1000]
+flexSigInd = 1
+flexVarName = "sigmaEye"
 
 function compareSims(static::StaticWorld, sigmas::Array{Float64,1}, flexSigValues::Array{Float64,1}, flexSigInd::Int64, flexVarName::String)
     variationNum = length(flexSigValues)
