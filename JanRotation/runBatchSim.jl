@@ -84,19 +84,20 @@ FullWorld(static::StaticWorld, init::InitWorld, sigmas::Array{Float64,1}, a::Flo
 
 function runSim(kworld::FullWorld)
     Z = kworld.muPrior + vcat([sqrt(kworld.a*s)*randn(size(kworld.muPrior,2)) for s in kworld.sigmas]'...);
-    Zs = [(kworld.A^t)*Z for t in 0:kworld.endI]
+    Zs = [(kworld.A^t)*Z for t in 0:kworld.endI]#CONSIDER PRE-CALCULATING ALL POWERS OF A
     Ys = [kworld.C*z + rand!(kworld.noise, similar(kworld.C*Z)) for z in Zs]
 
-    rse = zeros(size(kworld.muPrior,1),kworld.endI+1)*NaN
-    oldMu = kworld.muPrior
-    rse[:,1] = sum((oldMu - Zs[1]).^2,dims=2)
+    Mus = Array{Array{Float64,2},1}(undef, kworld.endI+1)
+    Mus[1] = kworld.muPrior
     for i = 2:kworld.endI+1
-        #Get observations
-        # Y = kworld.C*kworld.Zs[i] + rand!(kworld.noise, zeros(size(kworld.C*kworld.Zs[i])))
-        oldMu = kworld.A*oldMu + kworld.Ks[i]*(Ys[i]-kworld.C*kworld.A*oldMu);
-        rse[:,i] = sqrt.(sum((oldMu - Zs[i]).^2,dims=2))#convert to distance from components
+        Mus[i] = kworld.A*Mus[i-1] + kworld.Ks[i]*(Ys[i]-kworld.C*kworld.A*Mus[i-1]);
     end
-    return rse
+    RSE = broadcast(rse, Mus - Zs)#convert to distance from components
+    return hcat(RSE...)
+end
+
+function rse(M::Array{Float64,2})
+    return dropdims(sqrt.(sum(M.^2,dims=2)), dims=2)
 end
 
 function plotshade(y::Array{Float64,1}, err::Array{Float64,1}, x::Array{Float64,1}, opts::PlotOpts)
@@ -131,7 +132,7 @@ function plotRMSE(RMSE::Array{Float64,2}, eVars::Array{Float64,2}, mVars::Array{
 end
 
 function runBatchSim(plotOpts::PlotOpts, static::StaticWorld, simOpts::SimOpts)
-    kworld = FullWorld(static, simOpts)
+    kworld = FullWorld(static, simOpts)#SLOW
 
     rses = zeros(size(static.muPrior,1),static.endI+1,simOpts.N)*NaN
     for n = 1:simOpts.N#SHOULD BE PARFOR [if could start pool correctly...]
