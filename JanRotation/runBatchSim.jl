@@ -74,17 +74,19 @@ struct FullWorld
     dt::Float64
     endI::Int128
     allT::Array{Float64,1}
+    allAs::Array{Array{Float64,2},1}
 end
 FullWorld(static::StaticWorld, simOpts::SimOpts) =
     FullWorld(static::StaticWorld, InitWorld(static::StaticWorld, simOpts::SimOpts), simOpts.sigmas, simOpts.a)
 FullWorld(static::StaticWorld, init::InitWorld, sigmas::Array{Float64,1}, a::Float64) =
     FullWorld(a, sigmas, init.sigmaIn, init.noise, init.Ks, init.Vars,
                 static.A, static.C, static.muPrior, static.endT, static.dt, static.endI,
-                Array{Float64,1}(0:static.dt:static.endI*static.dt))
+                Array{Float64,1}(0:static.dt:static.endI*static.dt),
+                [static.A^t for t in 0:static.endI])
 
 function runSim(kworld::FullWorld)
     Z = kworld.muPrior + vcat([sqrt(kworld.a*s)*randn(size(kworld.muPrior,2)) for s in kworld.sigmas]'...);
-    Zs = [(kworld.A^t)*Z for t in 0:kworld.endI]#CONSIDER PRE-CALCULATING ALL POWERS OF A
+    Zs = [A*Z for A in kworld.allAs]
     Ys = [kworld.C*z + rand!(kworld.noise, similar(kworld.C*Z)) for z in Zs]
 
     Mus = Array{Array{Float64,2},1}(undef, kworld.endI+1)
