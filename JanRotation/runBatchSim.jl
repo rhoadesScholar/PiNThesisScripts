@@ -13,11 +13,17 @@ struct StaticWorld
     endT::Float64
     dt::Float64
     endI::Int
+    allT::Array{Float64,1}
+    allAs::Array{Array{Float64,2},1}
 end
 StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2}, endT::Float64, dt::Float64) =
     StaticWorld(A, C, muPrior, endT, dt, Integer(ceil(endT/dt)))
 StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2}) =
     StaticWorld(A, C, muPrior, 500., .5, 1000)
+StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2}, endT::Float64, dt::Float64, endI::Int) =
+    StaticWorld(A, C, muPrior, endT, dt, endI,
+                Array{Float64,1}(0:dt:endI*dt),
+                [A^t for t in 0:endI])
 
 struct SimOpts
     sigmas::Array{Float64,1}
@@ -26,7 +32,7 @@ struct SimOpts
 end
 SimOpts(num::Int64) = SimOpts(ones(num,1))
 SimOpts(static::StaticWorld) = SimOpts(ones(size(static.A,1)))
-SimOpts(sigmas::Array{Float64,1}) = SimOpts(sigmas::Array{Float64,1}, 1, 500)
+SimOpts(sigmas::Array{Float64,1}) = SimOpts(sigmas, 1, 500)
 
 struct PlotOpts
     label::String
@@ -34,20 +40,8 @@ struct PlotOpts
     width::Float64
     alpha::Float64
 end
-PlotOpts(label::String) = PlotOpts(label::String, [0,0,1], 2, .2)
-PlotOpts(label::String, color::Array{Float64,1}) = PlotOpts(label::String, color::Array{Float64,1}, 2, .2)
-
-struct InitWorld
-    sigmaIn::Array{Float64,2}
-    noise
-    Ks::Array{Array{Float64,2},1}
-    Vars::Array{Array{Float64,2},1}
-end
-InitWorld(static::StaticWorld, simOpts::SimOpts) = InitWorld(static,
-    diagm(simOpts.a*simOpts.sigmas),
-    (static.C*(diagm(simOpts.sigmas))*static.C')/static.dt)
-InitWorld(static::StaticWorld, initVar::Array{Float64,2}, sigmaIn::Array{Float64,2}) = InitWorld(
-        sigmaIn, MvNormal(zeros(size(sigmaIn,1)), sigmaIn), getKalman(static, initVar, sigmaIn)...)
+PlotOpts(label::String) = PlotOpts(label, [0,0,1], 2, .2)
+PlotOpts(label::String, color::Array{Float64,1}) = PlotOpts(label, color, 2, .2)
 
 function getKalman(static::StaticWorld, initVar::Array{Float64,2}, sigmaIn::Array{Float64,2})
     Vars = Array{Array{Float64,2}, 1}(undef, static.endI+1)
@@ -62,38 +56,28 @@ function getKalman(static::StaticWorld, initVar::Array{Float64,2}, sigmaIn::Arra
 end
 
 struct FullWorld
+    static::StaticWorld
     a::Float64
-    sigmas::Array{Float64,1}
     sigmaIn::Array{Float64,2}
     noise
     Ks::Array{Array{Float64,2},1}
     Vars::Array{Array{Float64,2},1}
-    A::Array{Float64,2}
-    C::Array{Float64,2}
-    muPrior::Array{Float64,2}
-    endT::Float64
-    dt::Float64
-    endI::Int128
-    allT::Array{Float64,1}
-    allAs::Array{Array{Float64,2},1}
 end
 FullWorld(static::StaticWorld, simOpts::SimOpts) =
-    FullWorld(static::StaticWorld, InitWorld(static::StaticWorld, simOpts::SimOpts), simOpts.sigmas, simOpts.a)
-FullWorld(static::StaticWorld, init::InitWorld, sigmas::Array{Float64,1}, a::Float64) =
-    FullWorld(a, sigmas, init.sigmaIn, init.noise, init.Ks, init.Vars,
-                static.A, static.C, static.muPrior, static.endT, static.dt, static.endI,
-                Array{Float64,1}(0:static.dt:static.endI*static.dt),
-                [static.A^t for t in 0:static.endI])
+    FullWorld(static::StaticWorld, simOpts.a,
+    diagm(simOpts.a*simOpts.sigmas), (static.C*diagm(simOpts.sigmas)*static.C')/static.dt)
+FullWorld(static::StaticWorld, a::Float64, initVar::Array{Float64,2}, sigmaIn::Array{Float64,2}) =
+    FullWorld(static, a, sigmaIn, MvNormal(zeros(size(sigmaIn,1)), sigmaIn), getKalman(static, initVar, sigmaIn)...)
 
 @everywhere function runSim(kworld::FullWorld)
-    Z = kworld.muPrior + vcat([sqrt(kworld.a*s)*randn(size(kworld.muPrior,2)) for s in kworld.sigmas]'...);
-    Zs = [A*Z for A in kworld.allAs]
-    Ys = [kworld.C*z + rand!(kworld.noise, similar(kworld.C*Z)) for z in Zs]
+    Z = kworld.static.muPrior + vcat([sqrt(kworld.a*s)*randn(size(kworld.static.muPrior,2)) for s in diag(kworld.Vars[1])]'...);
+    Zs = [A*Z for A in kworld.static.allAs]
+    Ys = [kworld.static.C*z + rand!(kworld.noise, similar(kworld.static.C*Z)) for z in Zs]
 
-    Mus = Array{Array{Float64,2},1}(undef, kworld.endI+1)
-    Mus[1] = kworld.muPrior
-    for i = 2:kworld.endI+1
-        Mus[i] = kworld.A*Mus[i-1] + kworld.Ks[i]*(Ys[i]-kworld.C*kworld.A*Mus[i-1]);
+    Mus = Array{Array{Float64,2},1}(undef, kworld.static.endI+1)
+    Mus[1] = kworld.static.muPrior
+    for i = 2:kworld.static.endI+1
+        Mus[i] = kworld.static.A*Mus[i-1] + kworld.Ks[i]*(Ys[i]-kworld.static.C*kworld.static.A*Mus[i-1]);
     end
     RSE = broadcast(rse, Mus - Zs)#convert to distance from components
     return hcat(RSE...)
@@ -146,7 +130,7 @@ function runBatchSim(plotOpts::PlotOpts, static::StaticWorld, simOpts::SimOpts)
     # sems = dropdims(std(rses; mean=RMSE,dims=3)/sqrt(simOpts.N), dims=3)
     eVars = var(rses; mean=RMSE)
     mVars = hcat([diag(M) for M in kworld.Vars]...)
-    plotRMSE(mean(rses), eVars, mVars, kworld.allT, plotOpts)
+    plotRMSE(mean(rses), eVars, mVars, kworld.static.allT, plotOpts)
 
     return rses
 end
