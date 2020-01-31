@@ -3,6 +3,7 @@ using Distributions
 using Random
 using LinearAlgebra
 using Statistics
+using Distributed
 
 struct StaticWorld
     #Sim Priors [position, object distance, object motion, velocity]
@@ -33,8 +34,8 @@ struct PlotOpts
     width::Float64
     alpha::Float64
 end
-PlotOpts(label::String) = PlotOpts(label::String, [0,0,1], 2, .3)
-PlotOpts(label::String, color::Array{Float64,1}) = PlotOpts(label::String, color::Array{Float64,1}, 2, .3)
+PlotOpts(label::String) = PlotOpts(label::String, [0,0,1], 2, .2)
+PlotOpts(label::String, color::Array{Float64,1}) = PlotOpts(label::String, color::Array{Float64,1}, 2, .2)
 
 struct InitWorld
     sigmaIn::Array{Float64,2}
@@ -84,7 +85,7 @@ FullWorld(static::StaticWorld, init::InitWorld, sigmas::Array{Float64,1}, a::Flo
                 Array{Float64,1}(0:static.dt:static.endI*static.dt),
                 [static.A^t for t in 0:static.endI])
 
-function runSim(kworld::FullWorld)
+@everywhere function runSim(kworld::FullWorld)
     Z = kworld.muPrior + vcat([sqrt(kworld.a*s)*randn(size(kworld.muPrior,2)) for s in kworld.sigmas]'...);
     Zs = [A*Z for A in kworld.allAs]
     Ys = [kworld.C*z + rand!(kworld.noise, similar(kworld.C*Z)) for z in Zs]
@@ -136,15 +137,16 @@ end
 function runBatchSim(plotOpts::PlotOpts, static::StaticWorld, simOpts::SimOpts)
     kworld = FullWorld(static, simOpts)#SLOW
 
-    rses = zeros(size(static.muPrior,1),static.endI+1,simOpts.N)*NaN
-    for n = 1:simOpts.N#SHOULD BE PARFOR [if could start pool correctly...]
-        rses[:,:,n] = runSim(kworld)
-    end
-    RMSE = dropdims(mean(rses, dims=3), dims=3)
+    rses = Array{Array{Float64,2},1}(undef, simOpts.N)
+    pmap(n->rses[n] = runSim(kworld), 1:simOpts.N)
+    # for n = 1:simOpts.N#SHOULD BE PARFOR [if could start pool correctly...]
+    #     rses[:,:,n] = runSim(kworld)
+    # end
+    RMSE = mean(rses)
     # sems = dropdims(std(rses; mean=RMSE,dims=3)/sqrt(simOpts.N), dims=3)
-    eVars = dropdims(var(rses; mean=RMSE,dims=3), dims=3)
+    eVars = var(rses; mean=RMSE)
     mVars = hcat([diag(M) for M in kworld.Vars]...)
-    plotRMSE(RMSE, eVars, mVars, kworld.allT, plotOpts)
+    plotRMSE(mean(rses), eVars, mVars, kworld.allT, plotOpts)
 
     return rses
 end
