@@ -101,16 +101,18 @@ function plotRMSE(RMSE::Array{Float64,2}, eVars::Array{Float64,2}, mVars::Array{
     ylabel("root mean square error")
     title("Position RMSE")
 
-    subplot(2, 2, 2)
-    plotshade(RMSE[2,:], eVars[2,:], allT, opts)
-    fill_between(allT, RMSE[2,:]+mVars[2,:], RMSE[2,:]-mVars[2,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
-    xlabel("time")
-    ylabel("root mean square error")
-    title("Object Distance RMSE")
+    if size(RMSE,1) > 2
+        subplot(2, 2, 2)
+        plotshade(RMSE[2,:], eVars[2,:], allT, opts)
+        fill_between(allT, RMSE[2,:]+mVars[2,:], RMSE[2,:]-mVars[2,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
+        xlabel("time")
+        ylabel("root mean square error")
+        title("Object Distance RMSE")
+    end
 
     subplot(2, 2, 3)
-    plotshade(RMSE[4,:], eVars[4,:], allT, opts)
-    fill_between(allT, RMSE[4,:]+mVars[4,:], RMSE[4,:]-mVars[4,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
+    plotshade(RMSE[end,:], eVars[end,:], allT, opts)
+    fill_between(allT, RMSE[end,:]+mVars[end,:], RMSE[end,:]-mVars[end,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
     xlabel("time")
     ylabel("root mean square error")
     title("Velocity RMSE")
