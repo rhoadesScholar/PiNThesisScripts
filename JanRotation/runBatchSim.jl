@@ -32,7 +32,9 @@ struct SimOpts
 end
 SimOpts(num::Int64) = SimOpts(ones(num,1))
 SimOpts(static::StaticWorld) = SimOpts(ones(size(static.A,1)))
-SimOpts(sigmas::Array{Float64,1}) = SimOpts(sigmas, 1, 500)
+SimOpts(sigmas::Array{Float64,1}) = SimOpts(sigmas, 1., 500)
+SimOpts(sigmas::Array{Float64,1}, N::Int) = SimOpts(sigmas, 1., N)
+SimOpts(sigmas::Array{Float64,1}, a::Float64) = SimOpts(sigmas, a, 500)
 
 struct PlotOpts
     label::String
@@ -121,7 +123,7 @@ function plotRMSE(RMSE::Array{Float64,2}, eVars::Array{Float64,2}, mVars::Array{
 end
 
 function runBatchSim(plotOpts::PlotOpts, static::StaticWorld, simOpts::SimOpts)
-    kworld = FullWorld(static, simOpts)#SLOW
+    kworld = FullWorld(static, simOpts)
 
     rses = Array{Array{Float64,2},1}(undef, simOpts.N)
     pmap(n->rses[n] = runSim(kworld), 1:simOpts.N)

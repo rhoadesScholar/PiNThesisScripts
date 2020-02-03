@@ -1,7 +1,7 @@
 include("runBatchSim.jl")
 include("linspecer.jl")
 using Printf
-# 
+#
 # dt = .1
 # A = [1 0 0 dt;
 #      0 1 dt -dt;
@@ -44,7 +44,7 @@ function compareSims(static::StaticWorld, sigmas::Array{Float64,1}, flexSigValue
         println(string("Variation #", v))
         plotOpts = PlotOpts(@sprintf("%s = %s", flexVarName, string.(flexSigValues[v])), colors[v,:])
         setindex!(sigmas, flexSigValues[v], flexSigInd)
-        simOpts = SimOpts(sigmas)
+        simOpts = SimOpts(sigmas, 1000)
         @time runBatchSim(plotOpts, static, simOpts)
     end
     legend()
