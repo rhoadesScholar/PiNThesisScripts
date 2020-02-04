@@ -5,16 +5,16 @@ using LinearAlgebra
 using Statistics
 using Distributed
 
-struct StaticWorld
+struct StaticWorld{A2<:Array{Float64,2}, F<:Float64, I<:Int64, A1<:Array{Float64,1}, AA<:Array{Array{Float64,2},1}}
     #Sim Priors [position, object distance, object motion, velocity]
-    A::Array{Float64,2}
-    C::Array{Float64,2}
-    muPrior::Array{Float64,2}
-    endT::Float64
-    dt::Float64
-    endI::Int
-    allT::Array{Float64,1}
-    allAs::Array{Array{Float64,2},1}
+    A::A2
+    C::A2
+    muPrior::A2
+    endT::F
+    dt::F
+    endI::I
+    allT::A1
+    allAs::AA
 end
 StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2}, endT::Float64, dt::Float64) =
     StaticWorld(A, C, muPrior, endT, dt, Integer(ceil(endT/dt)))
@@ -25,10 +25,10 @@ StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2},
                 Array{Float64,1}(0:dt:endI*dt),
                 [A^t for t in 0:endI])
 
-struct SimOpts
-    sigmas::Array{Float64,1}
-    a::Float64
-    N::Int64
+struct SimOpts{A<:Array{Float64,1}, F<:Float64, I<:Int64}
+    sigmas::A
+    a::F
+    N::I
 end
 SimOpts(num::Int64) = SimOpts(ones(num,1))
 SimOpts(static::StaticWorld) = SimOpts(ones(size(static.A,1)))
@@ -36,14 +36,14 @@ SimOpts(sigmas::Array{Float64,1}) = SimOpts(sigmas, 1., 500)
 SimOpts(sigmas::Array{Float64,1}, N::Int) = SimOpts(sigmas, 1., N)
 SimOpts(sigmas::Array{Float64,1}, a::Float64) = SimOpts(sigmas, a, 500)
 
-struct PlotOpts
-    label::String
-    color::Array{Float64,1}
-    width::Float64
-    alpha::Float64
+struct PlotOpts{S<:String, A<:Array{Float64,1}, F<:Float64}
+    label::S
+    color::A
+    width::F
+    alpha::F
 end
-PlotOpts(label::String) = PlotOpts(label, [0,0,1], 2, .2)
-PlotOpts(label::String, color::Array{Float64,1}) = PlotOpts(label, color, 2, .2)
+PlotOpts(label::String) = PlotOpts(label, [0,0,1], 2., .2)
+PlotOpts(label::String, color::Array{Float64,1}) = PlotOpts(label, color, 2., .2)
 
 function getKalman(static::StaticWorld, initVar::Array{Float64,2}, sigmaIn::Array{Float64,2})
     Vars = Array{Array{Float64,2}, 1}(undef, static.endI+1)
@@ -51,19 +51,19 @@ function getKalman(static::StaticWorld, initVar::Array{Float64,2}, sigmaIn::Arra
     Vars[1] = initVar
     #Get filter
     for i = 2:static.endI+1
-        Ks[i] = (static.A*Vars[i-1]*static.A'*static.C')/(static.C*static.A*Vars[i-1]*static.A'*static.C' + sigmaIn)
+        Ks[i] = (static.A*Vars[i-1]*static.A'*static.C')/(static.C*static.A*Vars[i-1]*static.A'*static.C' .+ sigmaIn)
         Vars[i] = (I - Ks[i]*static.C)*static.A*Vars[i-1]*static.A'
     end
     return Ks, Vars
 end
 
-struct FullWorld
-    static::StaticWorld
-    a::Float64
-    sigmaIn::Array{Float64,2}
-    noise
-    Ks::Array{Array{Float64,2},1}
-    Vars::Array{Array{Float64,2},1}
+struct FullWorld{S<:StaticWorld, F<:Float64, A<:Array{Float64,2}, N<:Sampleable, AA<:Array{Array{Float64,2},1}}
+    static::S
+    a::F
+    sigmaIn::A
+    noise::N
+    Ks::AA
+    Vars::AA
 end
 FullWorld(static::StaticWorld, simOpts::SimOpts) =
     FullWorld(static::StaticWorld, simOpts.a,
@@ -74,15 +74,15 @@ FullWorld(static::StaticWorld, a::Float64, initVar::Array{Float64,2}, sigmaIn::A
 @everywhere function runSim(kworld::FullWorld)
     Z = kworld.static.muPrior + vcat([sqrt(kworld.a*s)*randn(size(kworld.static.muPrior,2)) for s in diag(kworld.Vars[1])]'...);
     Zs = [A*Z for A in kworld.static.allAs]
-    Ys = [kworld.static.C*z + rand!(kworld.noise, similar(kworld.static.C*Z)) for z in Zs]
+    Ys = [kworld.static.C*z .+ rand!(kworld.noise, similar(kworld.static.C*Z)) for z in Zs]
 
     Mus = Array{Array{Float64,2},1}(undef, kworld.static.endI+1)
     Mus[1] = kworld.static.muPrior
     for i = 2:kworld.static.endI+1
-        Mus[i] = kworld.static.A*Mus[i-1] + kworld.Ks[i]*(Ys[i]-kworld.static.C*kworld.static.A*Mus[i-1]);
+        Mus[i] = kworld.static.A*Mus[i-1] .+ kworld.Ks[i]*(Ys[i]-kworld.static.C*kworld.static.A*Mus[i-1]);
     end
-    SE = broadcast(se, Mus - Zs)#convert to distance from components (consider changing)
-    return hcat(SE...)
+    # SE = se.(Mus.-Zs)
+    return hcat(se.(Mus.-Zs)...)
 end
 
 function se(M::Array{Float64,2})
