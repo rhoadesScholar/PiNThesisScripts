@@ -28,7 +28,7 @@ function linspecer(n=128)
         return  [0.2005 0.5593 0.7380; 0.9684 0.4799 0.2723]
     end
 
-    frac=.95; # Slight modification from colorbrewer here to make the yellows in the center just a bit darker
+    frac=.85; # Slight modification from colorbrewer here to make the yellows in the center just a bit darker
     cmapp = [158 1 66; 213 62 79; 244 109 67; 253 174 97; 254 224 139; 255*frac 255*frac 191*frac; 230 245 152; 171 221 164; 102 194 165; 50 136 189; 94 79 162]
     x = range(1, n, length=size(cmapp,1))
     xi = 1:n

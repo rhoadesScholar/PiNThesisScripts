@@ -81,12 +81,12 @@ FullWorld(static::StaticWorld, a::Float64, initVar::Array{Float64,2}, sigmaIn::A
     for i = 2:kworld.static.endI+1
         Mus[i] = kworld.static.A*Mus[i-1] + kworld.Ks[i]*(Ys[i]-kworld.static.C*kworld.static.A*Mus[i-1]);
     end
-    RSE = broadcast(rse, Mus - Zs)#convert to distance from components
-    return hcat(RSE...)
+    SE = broadcast(se, Mus - Zs)#convert to distance from components (consider changing)
+    return hcat(SE...)
 end
 
-function rse(M::Array{Float64,2})
-    return dropdims(sqrt.(sum(M.^2,dims=2)), dims=2)
+function se(M::Array{Float64,2})
+    return dropdims(mean(M.^2,dims=2), dims=2)#SQRT CHANGES METRIC FROM VARIANCE (JAN MEETING 2/3/20), note:summing across dimensions sums together variances (changed to averaging)
 end
 
 function plotshade(y::Array{Float64,1}, err::Array{Float64,1}, x::Array{Float64,1}, opts::PlotOpts)
@@ -94,30 +94,36 @@ function plotshade(y::Array{Float64,1}, err::Array{Float64,1}, x::Array{Float64,
     p = plot(x[1:length(y)],y,color=opts.color[:],linewidth = opts.width, label=opts.label) ## change color | linewidth to adjust mean line()
 end
 
-function plotRMSE(RMSE::Array{Float64,2}, eVars::Array{Float64,2}, mVars::Array{Float64,2}, allT::Array{Float64,1}, opts::PlotOpts)
+function plotMSE(MSE::Array{Float64,2}, mVars::Array{Float64,2}, allT::Array{Float64,1}, opts::PlotOpts)
 
     subplot(2, 2, 1)
-    plotshade(RMSE[1,:], eVars[1,:], allT, opts)
-    fill_between(allT, RMSE[1,:]+mVars[1,:], RMSE[1,:]-mVars[1,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
+    plot(allT, MSE[1,:], color=opts.color[:], linewidth=opts.width, label=opts.label)
+    plot(allT, mVars[1,:], color=opts.color[:], linewidth=opts.width, linestyle=":")
+    # plotshade(RMSE[1,:], eVars[1,:], allT, opts)
+    # fill_between(allT, RMSE[1,:]+mVars[1,:], RMSE[1,:]-mVars[1,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
     xlabel("time")
-    ylabel("root mean square error")
-    title("Position RMSE")
+    ylabel("mean square error")
+    title("Position MSE")
 
-    if size(RMSE,1) > 2
+    if size(MSE,1) > 2
         subplot(2, 2, 2)
-        plotshade(RMSE[2,:], eVars[2,:], allT, opts)
-        fill_between(allT, RMSE[2,:]+mVars[2,:], RMSE[2,:]-mVars[2,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
+        plot(allT, MSE[2,:], color=opts.color[:], linewidth=opts.width, label=opts.label)
+        plot(allT, mVars[2,:], color=opts.color[:], linewidth=opts.width, linestyle=":")
+        # plotshade(RMSE[2,:], eVars[2,:], allT, opts)
+        # fill_between(allT, RMSE[2,:]+mVars[2,:], RMSE[2,:]-mVars[2,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
         xlabel("time")
-        ylabel("root mean square error")
-        title("Object Distance RMSE")
+        ylabel("mean square error")
+        title("Object Distance MSE")
     end
 
     subplot(2, 2, 3)
-    plotshade(RMSE[end,:], eVars[end,:], allT, opts)
-    fill_between(allT, RMSE[end,:]+mVars[end,:], RMSE[end,:]-mVars[end,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
+    plot(allT, MSE[4,:], color=opts.color[:], linewidth=opts.width, label=opts.label)
+    plot(allT, mVars[4,:], color=opts.color[:], linewidth=opts.width, linestyle=":")
+    # plotshade(RMSE[end,:], eVars[end,:], allT, opts)
+    # fill_between(allT, RMSE[end,:]+mVars[end,:], RMSE[end,:]-mVars[end,:], color=opts.color, alpha=opts.alpha, linestyle=":", hatch="|")
     xlabel("time")
-    ylabel("root mean square error")
-    title("Velocity RMSE")
+    ylabel("mean square error")
+    title("Velocity MSE")
 
     return
 end
@@ -125,16 +131,12 @@ end
 function runBatchSim(plotOpts::PlotOpts, static::StaticWorld, simOpts::SimOpts)
     kworld = FullWorld(static, simOpts)
 
-    rses = Array{Array{Float64,2},1}(undef, simOpts.N)
-    pmap(n->rses[n] = runSim(kworld), 1:simOpts.N)
-    # for n = 1:simOpts.N#SHOULD BE PARFOR [if could start pool correctly...]
-    #     rses[:,:,n] = runSim(kworld)
-    # end
-    RMSE = mean(rses)
-    # sems = dropdims(std(rses; mean=RMSE,dims=3)/sqrt(simOpts.N), dims=3)
-    eVars = var(rses; mean=RMSE)
-    mVars = hcat([diag(M) for M in kworld.Vars]...)
-    plotRMSE(mean(rses), eVars, mVars, kworld.static.allT, plotOpts)
+    ses = Array{Array{Float64,2},1}(undef, simOpts.N)
+    pmap(n->ses[n] = runSim(kworld), 1:simOpts.N)
+    MSE = mean(ses)
+    # eVars = var(rses; mean=RMSE)
+    mVars = hcat([diag(M) for M in kworld.Vars]...)#SQRT CHANGES METRIC FROM VARIANCE (JAN MEETING 2/3/20), note:summing across dimensions sums together variances
+    plotMSE(MSE, mVars, kworld.static.allT, plotOpts)
 
-    return rses
+    return ses
 end
