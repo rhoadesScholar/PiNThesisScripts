@@ -5,7 +5,7 @@ using LinearAlgebra
 using Statistics
 using Distributed
 
-struct StaticWorld{A2<:Array{Float64,2}, F<:Float64, I<:Int64, A1<:Array{Float64,1}, AA<:Array{Array{Float64,2},1}}
+struct StaticWorld{A2<:Array{Float64,2}, F<:Float64, I<:Int64, A1<:Array{Float64,1}, AA<:Array{Array{Float64,2},1}, FN<:Function}
     #Sim Priors [position, object distance, object motion, velocity]
     A::A2
     C::A2
@@ -15,6 +15,7 @@ struct StaticWorld{A2<:Array{Float64,2}, F<:Float64, I<:Int64, A1<:Array{Float64
     endI::I
     allT::A1
     allAs::AA
+    Zs::FN
 end
 StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2}, endT::Float64, dt::Float64) =
     StaticWorld(A, C, muPrior, endT, dt, Integer(ceil(endT/dt)))
@@ -23,7 +24,7 @@ StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2})
 StaticWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,2}, endT::Float64, dt::Float64, endI::Int) =
     StaticWorld(A, C, muPrior, endT, dt, endI,
                 Array{Float64,1}(0:dt:endI*dt),
-                [A^t for t in 0:endI])
+                [A^t for t in 0:endI], (A::Array{Float64,2},Z::Array{Float64,2})->A*Z)
 
 struct SimOpts{A<:Array{Float64,1}, F<:Float64, I<:Int64}
     sigmas::A
@@ -57,28 +58,36 @@ function getKalman(static::StaticWorld, initVar::Array{Float64,2}, sigmaIn::Arra
     return Ks, Vars
 end
 
-struct FullWorld{S<:StaticWorld, F<:Float64, A<:Array{Float64,2}, N<:Sampleable, AA<:Array{Array{Float64,2},1}}
+struct FullWorld{S<:StaticWorld, F<:Float64, A<:Array{Float64,2}, AA<:Array{Array{Float64,2},1}, FN<:Function, FN2<:Function}
     static::S
     a::F
     sigmaIn::A
-    noise::N
+    Ys::FN
     Ks::AA
     Vars::AA
+    Z::FN2
 end
 FullWorld(static::StaticWorld, simOpts::SimOpts) =
     FullWorld(static::StaticWorld, simOpts.a,
     diagm(simOpts.a*simOpts.sigmas), (static.C*diagm(simOpts.sigmas)*static.C')/static.dt)
 FullWorld(static::StaticWorld, a::Float64, initVar::Array{Float64,2}, sigmaIn::Array{Float64,2}) =
-    FullWorld(static, a, sigmaIn, MvNormal(zeros(size(sigmaIn,1)), sigmaIn), getKalman(static, initVar, sigmaIn)...)
+    FullWorld(static, a, sigmaIn,
+    (Z::Array{Float64,2})->rand!(MvNormal(zeros(size(sigmaIn,1)), sigmaIn), similar(static.C*static.muPrior)) .+ static.C*Z,
+    getKalman(static, initVar, sigmaIn)...,
+    ()->(static.muPrior + sqrt.(diag(initVar)).*randn(size(static.muPrior))))
 
-@everywhere function runSim(kworld::FullWorld)
-    Z = kworld.static.muPrior + vcat([sqrt(kworld.a*s)*randn(size(kworld.static.muPrior,2)) for s in diag(kworld.Vars[1])]'...);
-    Zs = [A*Z for A in kworld.static.allAs]
-    Ys = [kworld.static.C*z .+ rand!(kworld.noise, similar(kworld.static.C*Z)) for z in Zs]
+function runSim(kworld::FullWorld)
+    # Zs = [A*Z for A in kworld.static.allAs]
+    #Zs = A->A*Z
+    # Z  = kworld.Z()
+    # Zs = kworld.static.Zs(Z)
+    @time Z = collect(Iterators.repeated(kworld.Z(),kworld.static.endI+1))
+    @time Zs = kworld.static.Zs.(kworld.static.allAs, Z);
+    @time Ys = kworld.Ys.(Zs)#[kworld.static.C*z .+ rand!(kworld.noise, similar(kworld.static.C*Z[1])) for z in Zs]
 
-    Mus = Array{Array{Float64,2},1}(undef, kworld.static.endI+1)
-    Mus[1] = kworld.static.muPrior
-    for i = 2:kworld.static.endI+1
+    @time Mus = Array{Array{Float64,2},1}(undef, kworld.static.endI+1)
+    @time Mus[1] = kworld.static.muPrior
+    @time for i = 2:kworld.static.endI+1
         Mus[i] = kworld.static.A*Mus[i-1] .+ kworld.Ks[i]*(Ys[i]-kworld.static.C*kworld.static.A*Mus[i-1]);
     end
     # SE = se.(Mus.-Zs)
@@ -132,7 +141,10 @@ function runBatchSim(plotOpts::PlotOpts, static::StaticWorld, simOpts::SimOpts)
     kworld = FullWorld(static, simOpts)
 
     ses = Array{Array{Float64,2},1}(undef, simOpts.N)
-    pmap(n->ses[n] = runSim(kworld), 1:simOpts.N)
+    # pmap(n->ses[n] = runSim(kworld), 1:simOpts.N)
+    @simd for n = 1:simOpts.N
+       ses[n] = runSim(kworld)
+    end
     MSE = mean(ses)
     # eVars = var(rses; mean=RMSE)
     mVars = hcat([diag(M) for M in kworld.Vars]...)#SQRT CHANGES METRIC FROM VARIANCE (JAN MEETING 2/3/20), note:summing across dimensions sums together variances
