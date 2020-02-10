@@ -72,7 +72,7 @@ FullWorld(static::StaticWorld, simOpts::SimOpts) =
     diagm(simOpts.a*simOpts.sigmas), (static.C*diagm(simOpts.sigmas)*static.C')/static.dt)
 FullWorld(static::StaticWorld, a::Float64, initVar::Array{Float64,2}, sigmaIn::Array{Float64,2}) =
     FullWorld(static, a, sigmaIn,
-    (Z::Array{Float64,2})->rand!(MvNormal(zeros(size(sigmaIn,1)), sigmaIn), similar(static.C*static.muPrior)) .+ static.C*Z,
+    (Z::Array{Float64,2})->rand!(MvNormal(zeros(size(sigmaIn,1)), sigmaIn), similar(static.C*static.muPrior)) + static.C*Z,
     getKalman(static, initVar, sigmaIn)...,
     ()->(static.muPrior + sqrt.(diag(initVar)).*randn(size(static.muPrior))))
 
@@ -81,17 +81,16 @@ function runSim(kworld::FullWorld)
     #Zs = A->A*Z
     # Z  = kworld.Z()
     # Zs = kworld.static.Zs(Z)
-    @time Z = collect(Iterators.repeated(kworld.Z(),kworld.static.endI+1))
-    @time Zs = kworld.static.Zs.(kworld.static.allAs, Z);
-    @time Ys = kworld.Ys.(Zs)#[kworld.static.C*z .+ rand!(kworld.noise, similar(kworld.static.C*Z[1])) for z in Zs]
+    Z = collect(Iterators.repeated(kworld.Z(),kworld.static.endI+1));
+    Zs = kworld.static.Zs.(kworld.static.allAs, Z);
+    Ys = kworld.Ys.(Zs);#[kworld.static.C*z .+ rand!(kworld.noise, similar(kworld.static.C*Z[1])) for z in Zs]
 
-    @time Mus = Array{Array{Float64,2},1}(undef, kworld.static.endI+1)
-    @time Mus[1] = kworld.static.muPrior
-    @time for i = 2:kworld.static.endI+1
-        Mus[i] = kworld.static.A*Mus[i-1] .+ kworld.Ks[i]*(Ys[i]-kworld.static.C*kworld.static.A*Mus[i-1]);
+    Mus = Array{Array{Float64,2},1}(undef, kworld.static.endI+1)
+    Mus[1] = kworld.static.muPrior
+    for i = 2:kworld.static.endI+1
+        Mus[i] = kworld.static.A*Mus[i-1] + kworld.Ks[i]*(Ys[i] - kworld.static.C*kworld.static.A*Mus[i-1]);
     end
-    # SE = se.(Mus.-Zs)
-    return hcat(se.(Mus.-Zs)...)
+    return hcat(se.(Mus-Zs)...)
 end
 
 function se(M::Array{Float64,2})
