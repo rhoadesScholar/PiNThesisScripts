@@ -31,6 +31,7 @@ C = [0. 0 1 0 0 0 0 0;
 muPrior = [0., 0, 10., 0, 0., 1, 1., 0];
 endT = 100.;
 initVar = [1., 1, 100., 100, 1., 1, 1., 1];
+emitVar = [1., 1, 100., 100, 1., 1, 1., 1];
 a = 1.;
 
 KMs = empty!(Array{KalmanModel,1}(undef,1));
@@ -40,7 +41,7 @@ end
 
 SWs = empty!(Array{SimWorld,1}(undef,1));
 for A in As
-      push!(SWs, SimWorld(A, C, muPrior, initVar, endT, dt))
+      push!(SWs, SimWorld(A, C, muPrior, emitVar, endT, dt))
 end
 
 agent = Agent(KMs, SWs)

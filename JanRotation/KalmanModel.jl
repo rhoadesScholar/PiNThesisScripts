@@ -61,7 +61,7 @@ function getRunSim(A, C, muPrior, initVar, a, totalI, Ks, Vars)
     nCon = ((2*pi)^(-length(muPrior)/2))
     # LLikeSum = (last, Mu, Cov, Y)->logaddexp(last, log(nCon*(det(Cov)^(-1/2))*exp(-((Y-Mu)'*inv(Cov)*(Y-Mu))/2)))
     LLike = (Mu, Cov, Y)->log(nCon*(det(Cov)^(-1/2))*exp(-((Y-Mu)'*inv(Cov)*(Y-Mu))/2))
-    return (Zs::Array{Array{Float64,1},1}, Ys::Array{Array{Float64,1},1}) -> runSim(Mus, totalI, A, C, Ks, Vars, LLike, Zs, Ys)
+    return (Zs::Array{Array{Float64,1},1}, Ys::Array{Array{Float64,1},1}) -> runSim(copy(Mus), totalI, A, C, Ks, Vars, LLike, Zs, Ys)
 end
 
 

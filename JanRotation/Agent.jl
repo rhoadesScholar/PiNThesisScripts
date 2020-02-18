@@ -1,7 +1,8 @@
 include("KalmanModel.jl")
 include("SimWorld.jl")
 
-struct Agent{KMs<:Array{KalmanModel,1}, SWs<:Array{SimWorld,1}}
+struct Agent{KMs<:Array{KalmanModel,1}, FN<:Function}#, SWs<:Array{SimWorld,1}}
     models::KMs
-    worlds::SWs
+    choice::FN
+    # worlds::SWs
 end
