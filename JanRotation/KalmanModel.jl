@@ -50,6 +50,7 @@ function runSim(Mus::Array{Float64,2}, totalI::Int, A::Array{Float64,2}, C::Arra
         Mus[end,i] = LLike(C*Mus[1:end-1,i], C*Vars[i]*C', Ys[i])
     end
     Mus[1:end-1,:] -= hcat(Zs...)
+    Mus[1:end-1,:] = Mus[1:end-1,:].^2
     # cumsum!(Mus[end,:], Mus[end,:])
     accumulate!(logaddexp, Mus[end,:], Mus[end,:])
     return Mus
@@ -61,6 +62,9 @@ function getRunSim(A, C, muPrior, initVar, a, totalI, Ks, Vars)
     nCon = ((2*pi)^(-length(muPrior)/2))
     # LLikeSum = (last, Mu, Cov, Y)->logaddexp(last, log(nCon*(det(Cov)^(-1/2))*exp(-((Y-Mu)'*inv(Cov)*(Y-Mu))/2)))
     LLike = (Mu, Cov, Y)->log(nCon*(det(Cov)^(-1/2))*exp(-((Y-Mu)'*inv(Cov)*(Y-Mu))/2))
+
+    # LLike = (Mu, Cov, Y)->log(nCon*(det(C*Cov*C')^(-1/2))*exp(-((Y-C*Mu)'*inv(C*Cov*C')*(Y-C*Mu))/2))
+
     return (Zs::Array{Array{Float64,1},1}, Ys::Array{Array{Float64,1},1}) -> runSim(copy(Mus), totalI, A, C, Ks, Vars, LLike, Zs, Ys)
 end
 

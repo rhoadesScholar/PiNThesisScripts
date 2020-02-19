@@ -1,4 +1,5 @@
 include("Agent.jl")
+include("linspecer.jl")
 using Distributed
 
 dt = .1;
@@ -46,17 +47,19 @@ end
 
 agent = Agent(KMs, SWs)
 
-N=500
-MusLL = Array{Array{Float64,2},2}(undef, length(agent.models), N)
-@simd for SW in agent.worlds
-    @simd for i = 1:N
-        j = 0;
-        Zs, Ys = SW.getStates(SW)
-        @simd for KM in agent.models
-            j+=1
-            MusLL[j,i] = KM.runSim(Zs, Ys)
-        end
-    end
+N=100
+MusLL = Array{Array{Float64,2},3}(undef, length(SWs), length(agent.models), N)
+@everywhere k=0;
+for SW in SWs
+      @everywhere k+=1
+      @simd for i = 1:N
+            j = 0;
+            Zs, Ys = SW.getStates(SW)
+            @simd for KM in agent.models
+                  j+=1
+                  MusLL[k,j,i] = KM.runSim(Zs, Ys)
+            end
+      end
 end
 
 findmax!(maxval, ind, A)
