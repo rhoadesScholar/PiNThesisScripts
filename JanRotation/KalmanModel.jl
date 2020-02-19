@@ -41,7 +41,7 @@ function runSim(Zs::Array{Array{Float64,1},1}, Ys::Array{Array{Float64,1},1}, KM
     return Mus
 end
 
-function runSim(musInit::Array{Float64,2}, totalI::Int, A::Array{Float64,2}, C::Array{Float64,2},
+function runSim(Mus::Array{Float64,2}, totalI::Int, A::Array{Float64,2}, C::Array{Float64,2},
                 Ks::Array{Array{Float64,2},1}, Vars::Array{Array{Float64,2},1}, LLike::Function,
                 Zs::Array{Array{Float64,1},1}, Ys::Array{Array{Float64,1},1})
     for i = 2:totalI
@@ -56,7 +56,7 @@ function runSim(musInit::Array{Float64,2}, totalI::Int, A::Array{Float64,2}, C::
     return Mus
 end
 
-function getRunSim(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,1}, initVar::Array{Float64,1}, a::Float64, totalI::Int, Ks::Array{Array{Float64,2},1}, Vars::Array{Array{Float64,2},1}, Zs::Array{Array{Float64,1},1}, Ys::Array{Array{Float64,1},1})
+function getRunSim(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,1}, initVar::Array{Float64,2}, a::Float64, totalI::Int, Ks::Array{Array{Float64,2},1}, Vars::Array{Array{Float64,2},1})
     Mus = Array{Float64,2}(undef, length(muPrior)+1, totalI)
     Mus[:,1] = vcat(muPrior, 0)
     nCon = ((2*pi)^(-length(muPrior)/2))
@@ -65,7 +65,7 @@ function getRunSim(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Floa
 
     # LLike = (Mu, Cov, Y)->log(nCon*(det(C*Cov*C')^(-1/2))*exp(-((Y-C*Mu)'*inv(C*Cov*C')*(Y-C*Mu))/2))
 
-    return runSim(copy(Mus), totalI, A, C, Ks, Vars, LLike, Zs, Ys)
+    return (Zs::Array{Array{Float64,1},1}, Ys::Array{Array{Float64,1},1}) -> runSim(copy(Mus), totalI, A, C, Ks, Vars, LLike, Zs, Ys)
 end
 
 
@@ -73,4 +73,4 @@ KalmanModel(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,1},
     KalmanModel(A, C, muPrior, diagm(initVar), a, totalI, getKalman(A, C, totalI, diagm(initVar))...)
 KalmanModel(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,1}, initVar::Array{Float64,2}, a::Float64, totalI::Int, Ks::Array{Array{Float64,2},1}, Vars::Array{Array{Float64,2},1}) =
     KalmanModel(A, C, muPrior, initVar, a, totalI, Ks, Vars,
-        (Zs::Array{Array{Float64,1},1}, Ys::Array{Array{Float64,1},1}) -> getRunSim(A, C, muPrior, initVar, a, totalI, Ks, Vars, Zs, Ys))
+        (Zs::Array{Array{Float64,1},1}, Ys::Array{Array{Float64,1},1}) -> getRunSim(A, C, muPrior, initVar, a, totalI, Ks, Vars)(Zs, Ys))

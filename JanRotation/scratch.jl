@@ -35,18 +35,18 @@ initVar = [1., 1, 100., 100, 1., 1, 1., 1];
 emitVar = [1., 1, 100., 100, 1., 1, 1., 1];
 a = 1.;
 
-KMs = empty!(Array{KalmanModel,1}(undef,1));
-for A in As
-      push!(KMs, KalmanModel(A, C, muPrior, initVar, a, Integer(ceil(endT/dt))+1));
-end
-
 SWs = empty!(Array{SimWorld,1}(undef,1));
 for A in As
       push!(SWs, SimWorld(A, C, muPrior, emitVar, endT, dt))
 end
 
+KMs = empty!(Array{KalmanModel,1}(undef,1));
+for A in As
+      push!(KMs, KalmanModel(A, C, muPrior, initVar, a, Integer(ceil(endT/dt))+1));
+end
+
 N=100
-MusLL = Array{Array{Float64,2},3}(undef, length(SWs), length(agent.models), N)
+MusLL = Array{Array{Float64,2},3}(undef, length(SWs), length(KMs), N)
 for s in 1:length(SWs), i in 1:N
       Zs, Ys = SWs[s].getStates(SWs[s])
       for k in 1:length(KMs)
