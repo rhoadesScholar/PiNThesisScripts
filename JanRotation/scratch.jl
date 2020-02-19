@@ -45,20 +45,13 @@ for A in As
       push!(SWs, SimWorld(A, C, muPrior, emitVar, endT, dt))
 end
 
-agent = Agent(KMs, SWs)
-
 N=100
 MusLL = Array{Array{Float64,2},3}(undef, length(SWs), length(agent.models), N)
-@everywhere k=0;
-for SW in SWs
-      @everywhere k+=1
-      @simd for i = 1:N
-            j = 0;
-            Zs, Ys = SW.getStates(SW)
-            @simd for KM in agent.models
-                  j+=1
-                  MusLL[k,j,i] = KM.runSim(Zs, Ys)
-            end
+for s in 1:length(SWs), i in 1:N
+      Zs, Ys = SWs[s].getStates(SWs[s])
+      for k in 1:length(KMs)
+            MusLL[s,k,i] = KMs[k].runSim(Zs, Ys)
+            println(s,":",k,":",i,"->",MusLL[s,k,i][end-1])
       end
 end
 

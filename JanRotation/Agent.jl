@@ -9,8 +9,12 @@ struct Agent{KMs<:Array{KalmanModel,1}, FN<:Function, I<:Int}#, SWs<:Array{SimWo
     # worlds::SWs
 end
 
-function getMSE(MusLL::Array{Array{Float64,2},1}, dims::Int, )
-    
+function getMSE(MusLL::Array{Array{Float64,2},1}, dims::Int, Vars::Array{Array{Float64,2},1})
+    MVar = reshape(vcat([mean(reshape(diag(data), dims, :), dims=1) for data in Vars]...), :, size(Vars,1))
+    MSEs = [mean(reshape(data[1:end-1,:], dims, :, size(data,2)), dims=1) for data in MusLL]
+    MSE = dropdims(mean(vcat(MSEs...), dims=1), dims=1)
+
+    return MSE, MVar
 end
 
 function plotMSE(MSE::Array{Float64,2}, mVars::Array{Float64,2}, allT::Array{Float64,1}, opts::PlotOpts)
