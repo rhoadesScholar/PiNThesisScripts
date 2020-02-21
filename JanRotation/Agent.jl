@@ -1,4 +1,5 @@
-include("KalmanModel.jl")
+include("Kalman.jl")
+# using Main.Kalman
 include("SimWorld.jl")
 
 struct Agent{KMs<:Array{KalmanModel,1}, FN<:Function, I<:Int}#, SWs<:Array{SimWorld,1}}
@@ -16,7 +17,7 @@ function getMSE(MusLL::Array{Array{Float64,2},1}, dims::Int, Vars::Array{Array{F
 
     return MSE, MVar
 end
-# 
+#
 # function plotMSE(MSE::Array{Float64,2}, mVars::Array{Float64,2}, allT::Array{Float64,1}, opts::PlotOpts)
 #
 #     mVars = hcat([diag(M) for M in kworld.Vars]...)

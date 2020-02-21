@@ -40,9 +40,9 @@ for A in As
       push!(SWs, SimWorld(A, C, muPrior, emitVar, endT, dt))
 end
 
-KMs = empty!(Array{KalmanModel,1}(undef,1));
-for A in As
-      push!(KMs, KalmanModel(A, C, muPrior, initVar, a, Integer(ceil(endT/dt))+1));
+KMs = (Array{KalmanModel,1}(undef,length(As)));
+for i in 1:length(As)
+      KMs[i] = KalmanModel(As[i], C, muPrior, initVar, a, Integer(ceil(endT/dt))+1);
 end
 
 N=100
@@ -50,8 +50,10 @@ MusLL = Array{Array{Float64,2},3}(undef, length(SWs), length(KMs), N)
 for s in 1:length(SWs), i in 1:N
       Zs, Ys = SWs[s].getStates(SWs[s])
       for k in 1:length(KMs)
-            MusLL[s,k,i] = KMs[k].runSim(Zs, Ys)
-            println(s,":",k,":",i,"->",MusLL[s,k,i][end-1])
+            MusLL[s,k,i] = KMs[k].getMusLL(Zs, Ys)
+            if i==N
+                  println(s,":",k,":",i,"->",MusLL[s,k,i][end-1])
+            end
       end
 end
 
