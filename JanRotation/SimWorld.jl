@@ -2,7 +2,7 @@ using LinearAlgebra
 using Distributions
 using Random
 
-struct SimWorld{A2<:Array{Float64,2}, F<:Float64, I<:Int64, A1<:Array{Float64,1}, AA<:Array{Array{Float64,2},1}, FN<:Function}
+struct SimWorld{A2<:Array{Float64,2}, F<:Float64, I<:Int64, A1<:Array{Float64,1}, AA<:Array{Array{Float64,2},1}}
     A::A2
     C::A2
     muInit::A1
@@ -12,7 +12,6 @@ struct SimWorld{A2<:Array{Float64,2}, F<:Float64, I<:Int64, A1<:Array{Float64,1}
     endI::I
     allT::A1
     allAs::AA
-    getStates::FN
 end
 
 function getStates(SW::SimWorld)
@@ -27,5 +26,4 @@ SimWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,1}, em
 SimWorld(A::Array{Float64,2}, C::Array{Float64,2}, muPrior::Array{Float64,1}, emitVar::Array{Float64,1}, endT::Float64, dt::Float64, endI::Int) =
     SimWorld(A, C, muPrior, emitVar, endT, dt, endI,
                 Array{Float64,1}(0:dt:endI*dt),
-                [A^t for t in 0:endI],
-                getStates)
+                [A^t for t in 0:endI])

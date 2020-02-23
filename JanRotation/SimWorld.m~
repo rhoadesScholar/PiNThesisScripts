@@ -1,0 +1,45 @@
+classdef SimWorld < handle
+    properties
+        A
+        C
+        muInit
+        emitVar
+        endT
+        dt
+        endI
+        allT
+        allAs        
+        Ys
+    end
+    
+    methods
+        function obj = SimWorld(varargin)
+            props = properties(obj);
+            for v = varargin
+                obj.(props{1}) = v{1};
+                props = props(2:end);
+            end
+            
+            obj.endI = ceil(obj.endT/obj.dt);
+            obj.allT = 0:obj.dt:obj.endI*obj.dt;
+            
+            obj.allAs = NaN([size(obj.A), obj.endI+1]);
+            for i = 0:obj.endI
+                obj.allAs(:,:,i+1) = obj.A^i;
+            end
+            
+            obj.Ys = NaN([size(obj.C*obj.muInit), obj.endI+1]);%not initialized right, but whatever
+        end
+        
+        function [Zs, Ys] = getStates(obj)
+            Z = (obj.muInit + sqrt(obj.emitVar).*rand(size(obj.muInit)));
+            Zs = bsxfun(, obj.allAs, 1);
+            Zs = arrayfun(@(i) obj.allAs(:,:,i)*Z, 1:size(obj.allAs,3), 'UniformOutput', false);
+            randos = mat2cell(mvnrnd(zeros(size(obj.C*obj.C',1),1), obj.C*diag(obj.emitVar)*obj.C', obj.endI+1), ones(obj.endI+1,1));
+            obj.Ys = cellfun(@(z, noise) obj.C*z + noise, Zs, randos, 'UniformOutput', false);
+            
+            Ys = obj.Ys;
+        end
+    end
+    
+end
