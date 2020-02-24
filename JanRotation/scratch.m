@@ -39,7 +39,7 @@ N=100;
 
 E = .1;
 Vars = cat(4, KMs.Vars);
-Sigma = @(sigmas) reshape(cell2mat(arrayfun(@(i) nearcorr(sigmas(:,:,i)), 1:size(sigmas,3), 'UniformOutput', false)), size(sigmas,1), size(sigmas,2), []);
+Sigma = @(sigmas) reshape(cell2mat(arrayfun(@(i) nearestSPD(sigmas(:,:,i)), 1:size(sigmas,3), 'UniformOutput', false)), size(sigmas,1), size(sigmas,2), []);
 
 MusLL = NaN(length(SWs), length(KMs), length(muPrior)+1, ceil(endT/dt)+1);
 for s = 1:length(SWs)
@@ -51,16 +51,14 @@ for s = 1:length(SWs)
         for k = 1:length(KMs)
             [SEs(k,i,:,:), eYs(k,:,:), Mus(k,:,:)] =  KMs(k).runSim(Zs, Ys);
         end
-        ps = softmax(squeeze(SEs(:,i,end,:)));
+%         ps = softmax(squeeze(SEs(:,i,end,:)));
+%         
+%         dists = arrayfun(@(t) gmdistribution(Mus(:,1:end-1,t), Sigma(squeeze(Vars(:,:,t,:))), ps(:,t)), 1:size(Vars,3), 'UniformOutput', false);
+%         R = @(X, E, dist) diff(cdf(dist, [X-E, X+E]));
+%         getMetaMus = @(D, E) solve(R(X, E, D) == max(R(Y, E, D)), X);
+%         cellfun(@(D) getMetaMus(D, E), dists)
         
-        dists = arrayfun(@(t) gmdistribution(Mus(:,1:end-1,t), Sigma(squeeze(Vars(:,:,t,:))), ps(:,t)), 1:size(Vars,3), 'UniformOutput', false);
-        R = @(X, E, dist) diff(cdf(dist, [X-E, X+E]));
-        getMetaMus = @(D, E) solve(R(X, E, D) == max(R(Y, E, D)), X);
-        cellfun(@(D) getMetaMus(D, E), dists)
-        
-%         getCDFs = @(xL, xH, Mus, Sigmas) arrayfun(@(mu, sigma) mvncdf(xL,xH,mu,sigma), 
-        
-%         MetaMus =
+
     end
     MusLL(s,:,:,:) =  squeeze(nanmean(SEs, 2));
 end
