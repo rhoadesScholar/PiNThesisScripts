@@ -41,13 +41,12 @@ classdef KalmanModel < handle
             Mus(:, 1) = [obj.muPrior; 0];
             for i = 2:obj.totalI
                 Mus(1:end-1,i) = obj.A*Mus(1:end-1,i-1) + obj.Ks(:,:,i)*(Ys(:,i) - obj.C*obj.A*Mus(1:end-1,i-1));
-%                 Mus(end,i) = logsumexp([Mus(end,i-1), mvnpdf(Ys(:,i), obj.C*Mus(1:end-1,i), obj.C*obj.Vars(:,:,i)*obj.C')], 2);
 %                 Mus(end,i) = logmulexp(Mus(end,i-1), LLike(Ys(:,i), obj.C*Mus(1:end-1,i), obj.C*obj.Vars(:,:,i)*obj.C'));
-%                 Mus(end,i) = logsumexp(Mus(end,i-1), LLike(Ys(:,i), obj.C*Mus(1:end-1,i), obj.C*obj.Vars(:,:,i)*obj.C'));
-                Mus(end,i) = LLike(Ys(:,i), obj.C*Mus(1:end-1,i), obj.C*obj.Vars(:,:,i)*obj.C');
+                Mus(end,i) = obj.logsumexp([Mus(end,i-1), log(LLike(Ys(:,i), obj.C*Mus(1:end-1,i), obj.C*obj.Vars(:,:,i)*obj.C'))], 2);
+%                 Mus(end,i) = LLike(Ys(:,i), obj.C*Mus(1:end-1,i), obj.C*obj.Vars(:,:,i)*obj.C');
             end
-            Mus(end,:) = cumsum(Mus(end,:));
-            SEs = [(real(Mus(1:end-1,:)) - Zs).^2; real(Mus(end,:))];
+%             Mus(end,:) = cumsum(Mus(end,:));
+            SEs = [(real(Mus(1:end-1,:)) - Zs).^2; Mus(end,:)];
             eYs = obj.C*real(Mus(1:end-1,:));
             return
         end

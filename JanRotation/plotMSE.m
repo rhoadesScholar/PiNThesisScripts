@@ -50,11 +50,10 @@ function plotMSE(MusLL, dims, Vars, allT, labels)
             title("Velocity MSE")
 
             subplot(2, 2, 4)
-            plot(allT, squeeze(MSE(SW, KM, end, :)), 'Color', colors((SW-1)*size(MSE,2) + KM, :), 'LineWidth', width, 'DisplayName', sprintf('World_{%s}: Model_{%s}', labels{1, SW}, labels{2, KM}))
+            plot(allT, -squeeze(MSE(SW, KM, end, :)), 'Color', colors((SW-1)*size(MSE,2) + KM, :), 'LineWidth', width, 'DisplayName', sprintf('World_{%s}: Model_{%s}', labels{1, SW}, labels{2, KM}))
             hold on
             xlabel("time")
-            xlim([min(allT) max(allT)])
-            ylabel("Log-likelihood")
+            ylabel("Negative Log-likelihood")
             set(gca, 'XScale', 'log')
             set(gca, 'YScale', 'log')
             title("Model Performance")
@@ -68,7 +67,7 @@ function [MSE, MVar] = getMSE(MusLL, dims, Vars)
     for i = 1:size(Vars,4)
         MVar(i, :, :) = nansum(reshape(cell2mat(arrayfun(@(j) diag(Vars(:,:,j,i)), 1:size(Vars,3), 'UniformOutput', false)), dims, [], size(Vars,3)), 1);
     end
-    MSE = cat(3, squeeze(nansum(reshape(MusLL(:,:,1:end-1,:), 2, 2, dims, [], size(MusLL,4)), 3)), expm1(MusLL(:,:,end,:)+1));
+    MSE = cat(3, squeeze(nansum(reshape(MusLL(:,:,1:end-1,:), 2, 2, dims, [], size(MusLL,4)), 3)), real(expm1(MusLL(:,:,end,:)+1)));
     
     return
 end
