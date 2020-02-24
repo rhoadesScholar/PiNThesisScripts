@@ -37,29 +37,29 @@ end
 
 N=100;
 
-
-Sigmas = cat(4, KMs.Vars);
+E = .1;
+Vars = cat(4, KMs.Vars);
+Sigma = @(sigmas) reshape(cell2mat(arrayfun(@(i) nearcorr(sigmas(:,:,i)), 1:size(sigmas,3), 'UniformOutput', false)), size(sigmas,1), size(sigmas,2), []);
 
 MusLL = NaN(length(SWs), length(KMs), length(muPrior)+1, ceil(endT/dt)+1);
 for s = 1:length(SWs)
     SEs = NaN(length(KMs), N, length(muPrior)+1, ceil(endT/dt)+1);
     eYs = NaN(length(KMs), size(C,1), ceil(endT/dt)+1);
+    Mus = NaN(length(KMs), length(muPrior)+1, ceil(endT/dt)+1);
     for i = 1:N
         [Zs, Ys] = SWs(s).getStates();
         for k = 1:length(KMs)
-            [SEs(k,i,:,:), eYs(k,:,:), ~] =  KMs(k).runSim(Zs, Ys);
+            [SEs(k,i,:,:), eYs(k,:,:), Mus(k,:,:)] =  KMs(k).runSim(Zs, Ys);
         end
-        ps = exp(squeeze(SEs(:,i,end,:)));
+        ps = softmax(squeeze(SEs(:,i,end,:)));
         
-%         Ys(:,t)
-%         eYs(:,:,t)
-%         squeeze(Sigmas(:,:,t,:))
+        dists = arrayfun(@(t) gmdistribution(Mus(:,1:end-1,t), Sigma(squeeze(Vars(:,:,t,:))), ps(:,t)), 1:size(Vars,3), 'UniformOutput', false);
+        R = @(X, E, dist) diff(cdf(dist, [X-E, X+E]));
+        getMetaMus = @(D, E) solve(R(X, E, D) == max(R(Y, E, D)), X);
+        cellfun(@(D) getMetaMus(D, E), dists)
         
+%         getCDFs = @(xL, xH, Mus, Sigmas) arrayfun(@(mu, sigma) mvncdf(xL,xH,mu,sigma), 
         
-        
-%         arrayfun(@(t) ,1:size(Sigmas,3))
-        
-%         getMetaMus = @(Y, eY, Sigma) mvncdf(Y, eY, Sigma);
 %         MetaMus =
     end
     MusLL(s,:,:,:) =  squeeze(nanmean(SEs, 2));
@@ -69,7 +69,7 @@ dims = 2;
 
 labels = {'Moving', 'Still'; 'Moving', 'Still'};
 
-plotMSE(MusLL, dims, Sigmas, SWs(1).allT, labels)
+plotMSE(MusLL, dims, Vars, SWs(1).allT, labels)
 
 
 

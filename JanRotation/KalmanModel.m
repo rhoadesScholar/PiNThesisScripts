@@ -36,7 +36,8 @@ classdef KalmanModel < handle
         
         function [SEs, eYs, Mus] = runSim(obj, Zs, Ys)
 %             Like = @(Y, Mu, Cov) ((2*pi)^(-length(obj.muPrior)/2))/(sqrt(det(Cov))) * expm1(-((Y-Mu)'*(Cov\(Y-Mu)))/2);
-            LLike = @(Y, Mu, Cov) log1p(((2*pi)^(-length(obj.muPrior)/2))/(sqrt(det(Cov)))) + (-((Y-Mu)'*(Cov\(Y-Mu)))/2);%using log1p and expm1 are hackss
+%             LLike = @(Y, Mu, Cov) log1p(((2*pi)^(-length(obj.muPrior)/2))/(sqrt(det(Cov)))) + (-((Y-Mu)'*(Cov\(Y-Mu)))/2);%using log1p and expm1 are hackss
+            LLike = @(Y, Mu, Cov) -log1p(sqrt(det(Cov)*(2*pi)^length(obj.muPrior))) + (-((Y-Mu)'*(Cov\(Y-Mu)))/2);%using log1p and expm1 are hackss
             Mus = obj.blankMus;
             Mus(:, 1) = [obj.muPrior; 0];
             for i = 2:obj.totalI
