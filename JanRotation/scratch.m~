@@ -24,10 +24,10 @@ C = [0. 0 1 0 0 0 0 0;
      0. 0 0 1 0 0 0 0;
      0. 0 0 0 0 0 1 0;
      0. 0 0 0 0 0 0 1];
-muPrior = [0., 0, 10., 0, 0., 1, 1., 0]';
-endT = 1000.;
-initVar = [1., 1, 100., 100, 1., 1, 1., 1]';
-emitVar = [1., 1, 100., 100, 1., 1, 1., 1]';
+muPrior = [0., 0, 10., 10, 0., 1, 1., 0]';
+endT = 100.;
+initVar = [1., 1, 10., 10, 10., 10, 100., 100]';
+emitVar = [1., 1, 10., 10, 10., 10, 100., 100]';
 a = 1.;
 
 for i = 1:length(As)
@@ -35,18 +35,33 @@ for i = 1:length(As)
       SWs(i) = SimWorld(As{i}, C, muPrior, emitVar, endT, dt);
 end
 
-N=500;
+N=100;
+
+
+Sigmas = cat(4, KMs.Vars);
 
 MusLL = NaN(length(SWs), length(KMs), length(muPrior)+1, ceil(endT/dt)+1);
 for s = 1:length(SWs)
-    temp = NaN(length(KMs), N, length(muPrior)+1, ceil(endT/dt)+1);
+    SEs = NaN(length(KMs), N, length(muPrior)+1, ceil(endT/dt)+1);
+    eYs = NaN(length(KMs), size(C,1), ceil(endT/dt)+1);
     for i = 1:N
         [Zs, Ys] = SWs(s).getStates();
         for k = 1:length(KMs)
-            temp(k,i,:,:) =  KMs(k).runSim(Zs, Ys);
+            [SEs(k,i,:,:), eYs(k,:,:), ~] =  KMs(k).runSim(Zs, Ys);
         end
+        
+        
+        Ys(:,t)
+        eYs(:,:,t)
+        squeeze(Sigmas(:,:,t,:))
+        ps = SEs(:,i,end,:);
+        
+        arrayfun(@(t) ,1:size(Sigmas,3))
+        
+        getMetaMus = @(Y, eY, Sigma) mvncdf(Y, eY, Sigma);
+%         MetaMus =
     end
-    MusLL(s,:,:,:) =  squeeze(nanmean(temp, 2));
+    MusLL(s,:,:,:) =  squeeze(nanmean(SEs, 2));
 end
 
 Vars = cat(4, KMs(:).Vars);
