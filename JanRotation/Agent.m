@@ -33,7 +33,7 @@ classdef Agent < handle
             obj.LLike = @(Y, Mu, Cov) -log1p(sqrt(det(Cov)*(2*pi)^size(Y, 1))) + (-((Y-Mu)'*(Cov\(Y-Mu)))/2);%using log1p and expm1 are hackss            
             obj.E = @(X, p) obj.epsilon*(obj.A(p)*X')';
             
-            obj.opts = optimoptions('particleswarm', 'Display','off', 'MaxTime', .0001);%, 'UseVectorized', true
+            obj.opts = optimoptions('patternsearch', 'Display','off', 'MaxTime', .0001);%, 'UseVectorized', true
         end
         
         function [SEs, metaMus] = getMetaMus(obj, Mus, Zs, Ys)
@@ -44,12 +44,12 @@ classdef Agent < handle
             Sig = @(t) nansum(reshape(cell2mat(arrayfun(@(k) obj.Sigma(t, k)*ps(k,t), 1:length(obj.KMs), 'UniformOutput', false)), size(Zs,1), size(Zs,1), []), 3);
             cdfFunc = @(X, t) diff(cdf(dist(t), [X-obj.E(X,ps(:,t)); X+obj.E(X,ps(:,t))]));
             
-%             lb = squeeze(max(Mus(:,1:end-1,:),[],1));
-%             ub = squeeze(min(Mus(:,1:end-1,:),[],1));
+            lb = squeeze(max(Mus(:,1:end-1,:),[],1));
+            ub = squeeze(min(Mus(:,1:end-1,:),[],1));
             
 %             x = @(t) mle(Ys(:,t), 'pdf', @(X) min(dist(t).pdf(X), eps), 'start', ps(:,t)'*dist(t).mu, 'cdf', @(X) cdfFunc(X,t), 'LowerBound', lb(:,t)', 'UpperBound', ub(:,t)');
 
-            x = @(t) patternsearch(@(X) cdfFunc(X,t), ps(:,t)'*dist(t).mu);
+            x = @(t) patternsearch(@(X) cdfFunc(X,t), ps(:,t)'*dist(t).mu, [], [], [], [], lb(:,t), ub(:,t), [], obj.opts);
 
 %             warning('off','all')
 %             metaMus = arrayfun(@(t) ...
