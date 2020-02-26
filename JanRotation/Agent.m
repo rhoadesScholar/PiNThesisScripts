@@ -30,41 +30,29 @@ classdef Agent < handle
             Cs = {obj.KMs.C};
             obj.C = @(p) nansum(reshape(cell2mat(arrayfun(@(k) Cs{k}*p(k), 1:length(obj.KMs), 'UniformOutput', false)), size(Cs{1},1), size(Cs{1},2), []), 3);
             
-            obj.LLike = @(Y, Mu, Cov) -log1p(sqrt(det(Cov)*(2*pi)^size(Y, 1))) + (-((Y-Mu)'*(Cov\(Y-Mu)))/2);%using log1p and expm1 are hackss            
+            obj.LLike = @(Y, Mu, Cov) -(logdet(Cov) + log(2*pi)*size(obj.C, 1) + ((Y-Mu)'*(Cov\(Y-Mu))))/2;%using log1p and expm1 are hackss, boooo
             obj.E = @(X, p) obj.epsilon*(obj.A(p)*X')';
             
             obj.opts = optimoptions('patternsearch', 'Display','off', 'MaxTime', .0001);%, 'UseVectorized', true
         end
         
-        function [SEs, metaMus] = getMetaMus(obj, Mus, Zs, Ys)
+        function [SEs, metaMus] = getMetaMus(~, Mus, Zs)
             ps = softmax(squeeze(Mus(:,end,:)));       
 %             dists = arrayfun(@(t) gmdistribution(Mus(:,1:end-1,t), obj.Sigmas(t), ps(:,t)), 1:size(Mus,3), 'UniformOutput', false);
-            dist = @(t) gmdistribution(Mus(:,1:end-1,t), obj.Sigmas(t), ps(:,t));
+%             dist = @(t) gmdistribution(Mus(:,1:end-1,t), obj.Sigmas(t), ps(:,t));
             
-            Sig = @(t) nansum(reshape(cell2mat(arrayfun(@(k) obj.Sigma(t, k)*ps(k,t), 1:length(obj.KMs), 'UniformOutput', false)), size(Zs,1), size(Zs,1), []), 3);
-            cdfFunc = @(X, t) diff(cdf(dist(t), [X-obj.E(X,ps(:,t)); X+obj.E(X,ps(:,t))]));
-            
-            lb = squeeze(max(Mus(:,1:end-1,:),[],1));
-            ub = squeeze(min(Mus(:,1:end-1,:),[],1));
-            
-%             x = @(t) mle(Ys(:,t), 'pdf', @(X) min(dist(t).pdf(X), eps), 'start', ps(:,t)'*dist(t).mu, 'cdf', @(X) cdfFunc(X,t), 'LowerBound', lb(:,t)', 'UpperBound', ub(:,t)');
-
-            x = @(t) patternsearch(@(X) cdfFunc(X,t), ps(:,t)'*dist(t).mu, [], [], [], [], lb(:,t), ub(:,t), [], obj.opts);
-
-%             warning('off','all')
-%             metaMus = arrayfun(@(t) ...
-%                 ga(@(X) func(X, t),...
-%                 ps(:,t)'*dist(t).mu, lb(:,t)', ub(:,t)', obj.opts), ...
-%                 1:size(Mus,3), 'UniformOutput', false);
-%             warning('on','all')
-
-%             x = @(t) particleswarm(@(X) cdfFunc(X,t) , numel(lb(:,t)), lb(:,t), ub(:,t), obj.opts);
-            
+%             Sig = @(t) nansum(reshape(cell2mat(arrayfun(@(k) obj.Sigma(t, k)*ps(k,t), 1:length(obj.KMs), 'UniformOutput', false)), size(Zs,1), size(Zs,1), []), 3);
+%             metaVars = arrayfun(@(t) Sig(t), 1:size(Mus,3), 'UniformOutput', false);
+%             metaVars = reshape([metaVars{:}], size(Sig(1),1), size(Sig(1),2), []);
+%             
+%             cdfFunc = @(X, t) diff(cdf(dist(t), [X-obj.E(X,ps(:,t)); X+obj.E(X,ps(:,t))]));            
+%             lb = squeeze(max(Mus(:,1:end-1,:),[],1));
+%             ub = squeeze(min(Mus(:,1:end-1,:),[],1));            
+%             x = @(t) patternsearch(@(X) cdfFunc(X,t), ps(:,t)'*dist(t).mu, [], [], [], [], lb(:,t), ub(:,t), [], obj.opts);
+            x = @(t) ps(:,t)'*squeeze(Mus(:,1:end-1,t));
             metaMus = arrayfun(@(t) x(t), 1:size(Mus,3), 'UniformOutput', false);
             metaMus = reshape([metaMus{:}], [], size(metaMus,2));
-            probs = obj.logcumsumexp(arrayfun(@(t) log(obj.LLike(Ys(:,t), obj.C(ps(:,t))*metaMus(:,t), obj.C(ps(:,t))*Sig(t)*obj.C(ps(:,t))')), 1:size(Mus,3)), 2);
-            
-            SEs = cat(1, (metaMus - Zs).^2, probs);
+            SEs = (metaMus - Zs).^2;
             
             return
         end

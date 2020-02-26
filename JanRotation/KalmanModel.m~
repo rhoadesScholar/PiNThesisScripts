@@ -27,7 +27,7 @@ classdef KalmanModel < handle
             obj.Vars(:,:, 1) = obj.initVar;
 %           Get filter
             for i = 2:obj.totalI
-                P = obj.A*squeeze(obj.Vars(:,:,i-1))*obj.A';
+                P = 
                 obj.Ks(:,:,i) = (obj.A*squeeze(obj.Vars(:,:,i-1))*obj.A'*obj.C')/(obj.C*obj.A*obj.Vars(:,:,i-1)*obj.A'*obj.C' + obj.C*obj.initVar*obj.C');
                 obj.Vars(:,:,i) = (eye(size(obj.Ks(:,:,i)*obj.C,1)) - obj.Ks(:,:,i)*obj.C)*obj.A*obj.Vars(:,:,i-1)*obj.A';
             end
