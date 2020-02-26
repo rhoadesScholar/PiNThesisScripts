@@ -37,7 +37,7 @@ classdef Agent < handle
         end
         
         function [SEs, metaMus] = getMetaMus(~, Mus, Zs)
-            ps = softmax(squeeze(Mus(:,end,:)));       
+            ps = getLogOdds(Mus);%softmax(squeeze(Mus(:,end,:)));       
 %             dists = arrayfun(@(t) gmdistribution(Mus(:,1:end-1,t), obj.Sigmas(t), ps(:,t)), 1:size(Mus,3), 'UniformOutput', false);
 %             dist = @(t) gmdistribution(Mus(:,1:end-1,t), obj.Sigmas(t), ps(:,t));
             

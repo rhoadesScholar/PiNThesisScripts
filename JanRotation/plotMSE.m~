@@ -59,18 +59,17 @@ function plotMSE(MusLL, dims, Vars, allT, labels)
 end
 
 function [MSE, MVar] = getMSE(MusLL, dims, Vars)  
-    temp = NaN(size(Vars,4), size(Vars,1), size(Vars,3));
+    MVar = NaN(size(Vars,4), size(Vars,1), size(Vars,3));
     for i = 1:size(Vars,4)
-        temp(i,:,:) = cell2mat(arrayfun(@(t) diag(Vars(:,:,t,i)), 1:size(Vars,3), 'UniformOutput', false));
+        MVar(i,:,:) = cell2mat(arrayfun(@(t) diag(Vars(:,:,t,i)), 1:size(Vars,3), 'UniformOutput', false));
     end
-    MVar = nansum(reshape(temp, size(MusLL,1), size(MusLL,2), dims, [], size(MusLL,4)), 3);
-    temp = reshape(temp, size(MusLL,1), size(MusLL,2), [], size(MusLL,4));
-    MVar(i, :, :) = nansum(reshape(temp, dims, [], size(Vars,3)), 2);
+    MVar = nansum(reshape(MVar, size(MVar,1), dims, [], size(MVar,3)), 2);
+    MVar = reshape(MVar, size(MVar,1), [], size(MVar,4));
     
-    temp = nansum(reshape(MusLL(:,:,1:end-1,:), size(MusLL,1), size(MusLL,2), dims, [], size(MusLL,4)), 3);
-    temp = reshape(temp, size(MusLL,1), size(MusLL,2), [], size(MusLL,4));
+    MSE = nansum(reshape(MusLL(:,:,1:end-1,:), size(MusLL,1), size(MusLL,2), dims, [], size(MusLL,4)), 3);
+    MSE = reshape(MSE, size(MusLL,1), size(MusLL,2), [], size(MusLL,4));
     try
-        MSE = cat(3, temp, MusLL(:,:,end,:));
+        MSE = cat(3, MSE, MusLL(:,:,end,:));
     catch ME
         if strcmp(ME.identifier,'MATLAB:catenate:dimensionMismatch')
             try

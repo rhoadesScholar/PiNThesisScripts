@@ -36,7 +36,7 @@ function plotMSE(MusLL, dims, Vars, allT, labels)
             plot(allT, squeeze(MSE(j, i, end-1, :)), 'Color', colors((j-1)*size(MSE,2) + i, :), 'LineWidth', width, 'DisplayName', sprintf('W_{%s}: M_{%s}', labels{1, j}, labels{2, i}))
             hold on
             if j == size(MSE, 1) && ~contains(labels{2, i}, 'Combined')
-                plot(allT, squeeze(mVars(i, end-1,:)), 'Color', colors((j-1)*size(MSE,2) + i, :), 'LineWidth', width, 'LineStyle', ':', 'DisplayName', sprintf('Predicted: M_{%s}', labels{2, i}));
+                plot(allT, squeeze(mVars(i, end,:)), 'Color', colors((j-1)*size(MSE,2) + i, :), 'LineWidth', width, 'LineStyle', ':', 'DisplayName', sprintf('Predicted: M_{%s}', labels{2, i}));
             end
             xlabel("time")
             ylabel("mean square error")
@@ -63,8 +63,8 @@ function [MSE, MVar] = getMSE(MusLL, dims, Vars)
     for i = 1:size(Vars,4)
         MVar(i,:,:) = cell2mat(arrayfun(@(t) diag(Vars(:,:,t,i)), 1:size(Vars,3), 'UniformOutput', false));
     end
-    MVar = nansum(reshape(MVar, size(MusLL,2), dims, [], size(MusLL,4)), 3);
-    MVar = reshape(MVar, size(MusLL,2), [], size(MusLL,4));
+    MVar = nansum(reshape(MVar, size(MVar,1), dims, [], size(MVar,3)), 2);
+    MVar = reshape(MVar, size(MVar,1), [], size(MVar,4));
     
     MSE = nansum(reshape(MusLL(:,:,1:end-1,:), size(MusLL,1), size(MusLL,2), dims, [], size(MusLL,4)), 3);
     MSE = reshape(MSE, size(MusLL,1), size(MusLL,2), [], size(MusLL,4));

@@ -34,7 +34,7 @@ classdef SimWorld < handle
         end
         
         function [Zs, Ys] = getStates(obj)
-            Z = (obj.muInit + sqrt(obj.emitVar).*rand(size(obj.muInit)));
+            Z = (obj.muInit + sqrt(obj.emitVar).*randn(size(obj.muInit)));
             randos = mvnrnd(zeros(size(obj.C*obj.C',1),1), obj.C*diag(obj.emitVar)*obj.C', obj.endI+1)';
             Zs = obj.blankZs;
             Ys = obj.blankYs;

@@ -37,7 +37,7 @@ classdef Agent < handle
         end
         
         function [SEs, metaMus] = getMetaMus(~, Mus, Zs)
-            ps = softmax(squeeze(Mus(:,end,:)));       
+            ps = getLogOdds(M%softmax(squeeze(Mus(:,end,:)));       
 %             dists = arrayfun(@(t) gmdistribution(Mus(:,1:end-1,t), obj.Sigmas(t), ps(:,t)), 1:size(Mus,3), 'UniformOutput', false);
 %             dist = @(t) gmdistribution(Mus(:,1:end-1,t), obj.Sigmas(t), ps(:,t));
             
@@ -49,8 +49,7 @@ classdef Agent < handle
 %             lb = squeeze(max(Mus(:,1:end-1,:),[],1));
 %             ub = squeeze(min(Mus(:,1:end-1,:),[],1));            
 %             x = @(t) patternsearch(@(X) cdfFunc(X,t), ps(:,t)'*dist(t).mu, [], [], [], [], lb(:,t), ub(:,t), [], obj.opts);
-            squeeze(Mus(:,1:end-1,:))
-            x = @(t) nansum(reshape(cell2mat(arrayfun(@(k) ps(k,t)'*squeeze(Mus(:,1:end-1,t)), 1:size(ps,2), 'UniformOutput', false)), size(Cs{1},1), size(Cs{1},2), []), 3);
+            x = @(t) ps(:,t)'*squeeze(Mus(:,1:end-1,t));
             metaMus = arrayfun(@(t) x(t), 1:size(Mus,3), 'UniformOutput', false);
             metaMus = reshape([metaMus{:}], [], size(metaMus,2));
             SEs = (metaMus - Zs).^2;
