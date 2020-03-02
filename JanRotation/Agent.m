@@ -9,6 +9,7 @@ classdef Agent < handle
         A
         C
         E
+        Emahal
         LLike
         opts
     end
@@ -33,6 +34,9 @@ classdef Agent < handle
             
             obj.LLike = @(Y, Mu, Cov) -(logdet(Cov) + log(2*pi)*numel(Y) + ((Y-Mu)'*(Cov\(Y-Mu))))/2;%using log1p and expm1 are hackss, boooo
             obj.E = @(X, p) obj.epsilon*(obj.A(p)*X')';
+            obj.Emahal = @(X, p) obj.epsilon * (nansum(reshape(cell2mat(cellfun(@(a, pr) pr*a, cellfun(@(c, a) c*a*c', Cs, As, 'UniformOutput', false), ...
+                                                num2cell(p, 2)', 'UniformOutput', false)), size(obj.KMs(1).C,1), [], length(obj.KMs)),3)...
+                                                * X')';
             
             if ~any(contains(fields(obj), 'CostFun')) || isempty(obj.CostFun)
                 obj.CostFun = 'MSE';
@@ -46,32 +50,58 @@ classdef Agent < handle
             switch obj.CostFun
                 case 'MSE'
                     x = @(t) ps(:,t)'*squeeze(Mus(:,1:end-1,t));
-                otherwise                     
-%                     dists = arrayfun(@(t) gmdistribution(Mus(:,1:end-1,t), obj.Sigmas(t), ps(:,t)), 1:size(Mus,3), 'UniformOutput', false);
-                    dist = @(t) gmdistribution(Mus(:,1:end-1,t), obj.Sigmas(t), softmax(ps(:,t)));
-
-%                     Sig = @(t) nansum(reshape(cell2mat(arrayfun(@(k) obj.Sigma(t, k)*ps(k,t), 1:length(obj.KMs), 'UniformOutput', false)), size(Zs,1), size(Zs,1), []), 3);
-%                     metaVars = arrayfun(@(t) Sig(t), 1:size(Mus,3), 'UniformOutput', false);
-%                     metaVars = reshape([metaVars{:}], size(Sig(1),1), size(Sig(1),2), []);
-
+                    
+                    metaMus = arrayfun(@(t) x(t), 1:size(Mus,3), 'UniformOutput', false);
+                    metaMus = reshape([metaMus{:}], [], size(metaMus,2));
+                    
+                case 'Abrupt'                     
+                    dist = @(t) gmdistribution(Mus(:,1:end-1,t), obj.Sigmas(t), ps(:,t));
+            
                     cdfFunc = @(X, t) diff(cdf(dist(t), [X-obj.E(X,ps(:,t)); X+obj.E(X,ps(:,t))]));            
                     lb = squeeze(max(Mus(:,1:end-1,:),[],1));
                     ub = squeeze(min(Mus(:,1:end-1,:),[],1));            
                     x = @(t) patternsearch(@(X) cdfFunc(X,t), ps(:,t)'*dist(t).mu, [], [], [], [], lb(:,t), ub(:,t), [], obj.opts);
-            end
-            
-            
-            metaMus = arrayfun(@(t) x(t), 1:size(Mus,3), 'UniformOutput', false);
-            metaMus = reshape([metaMus{:}], [], size(metaMus,2));
-            
-            metaVars = cumCov(metaMus');
-            
-            LEvid = cumsum(arrayfun(@(t) obj.LLike(Ys(:,t), obj.C(ps(:,t))*metaMus(:,t), obj.C(ps(:,t))*metaVars(:,:,t)*obj.C(ps(:,t))'), 1:size(Mus,3)));
-            SEs = cat(1,(metaMus - Zs).^2, LEvid);
+                    
+                    metaMus = arrayfun(@(t) x(t), 1:size(Mus,3), 'UniformOutput', false);
+                    metaMus = reshape([metaMus{:}], [], size(metaMus,2));
+                    
+                case 'Mahal'                                       
+                    Ysigs = @(t) reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * obj.Sigma(t, k) * obj.KMs(k).C', 1:length(obj.KMs), 'UniformOutput', false)), size(obj.KMs(1).C,1), [], length(obj.KMs));
+                    %^OBJ.SIGMA NEEDS TO BE FIXED TO BE ACTUAL VARIANCE
+                    
+                    eYs = @(lastMu) reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * obj.KMs(k).A * lastMu, 1:length(obj.KMs), 'UniformOutput', false)), [], length(obj.KMs))';
+                    
+                    metaMus = obj.KMs(1).blankMus(1:end-1,:);
+                    tempDist = gmdistribution([obj.KMs.muPrior]', obj.Sigmas(1), ps(:,1));
+                    cdfFunc = @(X, t) diff(cdf(tempDist, [X-obj.E(X,ps(:,1)); X+obj.E(X,ps(:,1))]));   
+                    metaMus(:,1) = patternsearch(@(X) cdfFunc(X,1), ps(:,1)'*tempDist.mu, [], [], [], [], [], [], [], obj.opts);
+                    
+                    Ydists{1} = gmdistribution(reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * obj.KMs(k).A * obj.KMs(k).muPrior, 1:length(obj.KMs), 'UniformOutput', false)), [], length(obj.KMs))',...
+                                    Ysigs(1), ps(:,1));
+                    mahalT = @(t) Ydists{t}.mahal(Ys(:,t)');
+                    pMahal = @(t) (exp(-mahalT(t)) ./ nansum(exp(-mahalT(t))))';
+                    
+                    nextMus = @(lastMus) reshape(cell2mat(arrayfun(@(k) obj.KMs(k).A * lastMus, 1:length(obj.KMs), 'UniformOutput', false)), [], length(obj.KMs))';
+                    
+                    for i = 2:size(Ys,2)
+                        Ydists{i} = gmdistribution(eYs(metaMus(:,i-1)), Ysigs(i), pMahal(i-1));
+                        mahalT = @(t) Ydists{t}.mahal(Ys(:,t)');
+                        pMahal = @(t) (exp(-mahalT(t)) ./ nansum(exp(-mahalT(t))))';
+                        
+                        tempDist = gmdistribution(nextMus(metaMus(:,i-1)), obj.Sigmas(i), pMahal(i));%OBJ.SIGMAS NEEDS TO BE FIXED TO BE THE ACTUAL VARIANCE
+                        cdfFunc = @(X, t) diff(cdf(tempDist, [X-obj.E(X,pMahal(t)); X+obj.E(X,pMahal(t))]));   
+                        metaMus(:,i) = patternsearch(@(X) cdfFunc(X,i), pMahal(i)'*tempDist.mu, [], [], [], [], [], [], [], obj.opts);                        
+                    end
+            end                      
+%                     metaVars = arrayfun(@(t) Sig(t), 1:size(Mus,3), 'UniformOutput', false);
+%                     metaVars = reshape([metaVars{:}], size(Sig(1),1), size(Sig(1),2), []);
+%             metaVars = cumCov(metaMus');            
+%             LEvid = cumsum(arrayfun(@(t) obj.LLike(Ys(:,t), obj.C(ps(:,t))*metaMus(:,t), obj.C(ps(:,t))*metaVars(:,:,t)*obj.C(ps(:,t))'), 1:size(Mus,3)));
+            SEs = cat(1,(metaMus - Zs).^2, NaN(1,size(metaMus,2)));%LEvid);
             
             return
         end
-        
+       
         function s = logcumsumexp(~, x, w, dim)
             % Compute log(sum(exp(x),dim)) while avoiding numerical underflow.
             switch nargin 
