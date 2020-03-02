@@ -18,6 +18,13 @@ function [MusLL, Vars] = runSim(As, C, muPrior, initVar, options)%labels, dims, 
         options.epsilon = .1;    
         options.agnt = false;
         options.noiseVary = true;
+        options.Markov = false;
+        options.TRANS = [0.7 0.3;
+                         0.3 0.7;];
+        options.EMIS = [1 0;
+                        0 1];
+        options.SYMBOLS = cat(3, As{:});
+        options.CostFun = 'MSE';
     end
     
     arg = fieldnames(options);
@@ -27,10 +34,15 @@ function [MusLL, Vars] = runSim(As, C, muPrior, initVar, options)%labels, dims, 
     
     for i = 1:length(As)
           KMs(i) = KalmanModel(As{i}, C, muPrior{i}, initVar{i}, a, ceil(endT/dt)+1);
-          SWs(i) = SimWorld(As{i}, C, muInit{i}, emitVar{i}, endT, dt);
+          if ~Markov
+              SWs(i) = SimWorld(As{i}, C, muInit{i}, initVar{i}, emitVar{i}, endT, dt);
+          elseif i == 1
+              SWs = MarkovSimWorld(As, C, muInit, initVar, emitVar, endT, dt, TRANS, EMIS);
+          end
     end
+    
     if agnt && length(KMs) > 1
-        Bond007 = Agent(KMs, epsilon, SWs);
+        Bond007 = Agent(KMs, epsilon, SWs, CostFun);
         agnt = true;
     else
         agnt = false;
@@ -51,7 +63,7 @@ function [MusLL, Vars] = runSim(As, C, muPrior, initVar, options)%labels, dims, 
             end
 
             if agnt
-                SEs(k+1,i,1:end-1,:) = Bond007.getMetaMus(Mus, Zs);        
+                SEs(k+1,i,1:end,:) = Bond007.getMetaMus(Mus, Zs, Ys);        
             end
 
         end

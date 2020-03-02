@@ -1,4 +1,4 @@
-function MusLL = runSim(As, C, muPrior, initVar, options)%labels, dims, emitVar, muInit, endT, N, dt, a, epsilon)
+function [MusLL, Vars] = runSim(As, C, muPrior, initVar, options)%labels, dims, emitVar, muInit, endT, N, dt, a, epsilon)
     arguments
         As cell
         C = [0. 0 1 0 0 0 0 0;
@@ -13,22 +13,33 @@ function MusLL = runSim(As, C, muPrior, initVar, options)%labels, dims, emitVar,
         options.muInit = muPrior;
         options.endT = 100.;
         options.N = 100;
-        options.dt = .2;
+        options.dt = .1;
         options.a = 1.;
         options.epsilon = .1;    
         options.agnt = false;
         options.noiseVary = true;
+        options.Markov = false;
+        options.TRANS = [0.7 0.3;
+                         0.3 0.7;];
+         options.EMIS = [1 0;
+                         0 1];
+         options.SYMBOLS = [
     end
     
-    vars = fieldnames(options);
-    for v = 1:length(vars)
-       setThis(vars{v}, options.(vars{v}));
+    arg = fieldnames(options);
+    for v = 1:length(arg)
+       setThis(arg{v}, options.(arg{v}));
     end
     
     for i = 1:length(As)
           KMs(i) = KalmanModel(As{i}, C, muPrior{i}, initVar{i}, a, ceil(endT/dt)+1);
-          SWs(i) = SimWorld(As{i}, C, muInit{i}, emitVar{i}, endT, dt);
+          if ~Markov
+              SWs(i) = SimWorld(As{i}, C, muInit{i}, emitVar{i}, endT, dt);
+          elseif i == 1
+              SWs = MarkovSimWorld(As, C, muInit, emitVar, TRANS, EMIS, SYMBOLS, endT, dt);
+          end
     end
+    
     if agnt && length(KMs) > 1
         Bond007 = Agent(KMs, epsilon, SWs);
         agnt = true;
@@ -61,7 +72,8 @@ function MusLL = runSim(As, C, muPrior, initVar, options)%labels, dims, emitVar,
     if noiseVary
         temp = NaN(1,size(MusLL,2),size(MusLL,3),size(MusLL,4));
         for i = 1:size(MusLL,1)
-            temp(1,i,
+            temp(1,i,:,:) = MusLL(i,i,:,:);
+        end
         MusLL= temp;
     end
     
