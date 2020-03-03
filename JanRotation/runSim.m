@@ -43,13 +43,12 @@ function [MusLL, Vars] = runSim(As, C, muPrior, initVar, options)%labels, dims, 
     
     if agnt && length(KMs) > 1
         Bond007 = Agent(KMs, epsilon, SWs, CostFun);
+        tempVars = NaN(N, size(KMs(1).A,1), size(KMs(1).A,2), ceil(endT/dt)+1);
         agnt = true;
     else
         agnt = false;
     end
     
-    Vars = cat(4, KMs.Vars);
-
     MusLL = NaN(length(SWs), length(KMs)+agnt, length(muPrior{1})+1, ceil(endT/dt)+1);
     for s = 1:length(SWs)
         SEs = NaN(length(KMs)+agnt, N, length(muPrior{1})+1, ceil(endT/dt)+1);
@@ -63,11 +62,17 @@ function [MusLL, Vars] = runSim(As, C, muPrior, initVar, options)%labels, dims, 
             end
 
             if agnt
-                SEs(k+1,i,1:end,:) = Bond007.getMetaMus(Mus, Zs, Ys);        
+                [SEs(k+1,i,:,:), ~, tempVars(i,:,:,:)] = Bond007.getMetaMus(Mus, Zs, Ys);        
             end
 
         end
         MusLL(s,:,:,:) =  squeeze(nanmean(SEs, 2));
+    end
+    
+    if agnt
+        Vars = cat(4, KMs.Vars, squeeze(nanmean(tempVars,1)));
+    else
+        Vars = cat(4, KMs.Vars);
     end
     
     if noiseVary

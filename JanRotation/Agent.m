@@ -44,8 +44,10 @@ classdef Agent < handle
             obj.opts = optimoptions('patternsearch', 'Display','off', 'MaxTime', .0001);%, 'UseVectorized', true
         end
         
-        function [SEs, metaMus] = getMetaMus(obj, Mus, Zs, Ys)
-            ps = softmax(getLogOdds(Mus));           
+        function [SEs, metaMus, metaVars] = getMetaMus(obj, Mus, Zs, Ys)
+            ps = softmax(getLogOdds(Mus));        
+            metaVars = NaN([size(obj.KMs(1).A), size(Ys,2)]);
+            LEvid = NaN(1,size(Ys,2));
             
             switch obj.CostFun
                 case 'MSE'
@@ -65,39 +67,57 @@ classdef Agent < handle
                     metaMus = arrayfun(@(t) x(t), 1:size(Mus,3), 'UniformOutput', false);
                     metaMus = reshape([metaMus{:}], [], size(metaMus,2));
                     
-                case 'Mahal'                                       
-                    Ysigs = @(t) reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * obj.Sigma(t, k) * obj.KMs(k).C', 1:length(obj.KMs), 'UniformOutput', false)), size(obj.KMs(1).C,1), [], length(obj.KMs));
-                    %^OBJ.SIGMA NEEDS TO BE FIXED TO BE ACTUAL VARIANCE
-                    
-                    eYs = @(lastMu) reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * obj.KMs(k).A * lastMu, 1:length(obj.KMs), 'UniformOutput', false)), [], length(obj.KMs))';
-                    
+                case 'Mahal'                        
+                    %Initialize
                     metaMus = obj.KMs(1).blankMus(1:end-1,:);
                     tempDist = gmdistribution([obj.KMs.muPrior]', obj.Sigmas(1), ps(:,1));
                     cdfFunc = @(X, t) diff(cdf(tempDist, [X-obj.E(X,ps(:,1)); X+obj.E(X,ps(:,1))]));   
-                    metaMus(:,1) = patternsearch(@(X) cdfFunc(X,1), ps(:,1)'*tempDist.mu, [], [], [], [], [], [], [], obj.opts);
+                    metaMus(:,1) = patternsearch(@(X) cdfFunc(X,1), ps(:,1)'*tempDist.mu, [], [], [], [], [], [], [], obj.opts);                   
                     
                     Ydists{1} = gmdistribution(reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * obj.KMs(k).A * obj.KMs(k).muPrior, 1:length(obj.KMs), 'UniformOutput', false)), [], length(obj.KMs))',...
-                                    Ysigs(1), ps(:,1));
-                    mahalT = @(t) Ydists{t}.mahal(Ys(:,t)');
-                    pMahal = @(t) (exp(-mahalT(t)) ./ nansum(exp(-mahalT(t))))';
+                                    reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * obj.Sigma(1, k) * obj.KMs(k).C', 1:length(obj.KMs), 'UniformOutput', false)), size(obj.KMs(1).C,1), [], length(obj.KMs)),...
+                                    ps(:,1));
+                    mahalT = Ydists{1}.mahal(Ys(:,1)');
+                    pMahalT = (exp(-mahalT) ./ nansum(exp(-mahalT)))';
+                    pMahalTm1 = pMahalT;
+                             
+                    lb = squeeze(max(Mus(:,1:end-1,:),[],1));
+                    ub = squeeze(min(Mus(:,1:end-1,:),[],1));
                     
+                    thisSig = @(sigs, p) nansum(reshape(cell2mat(arrayfun(@(k) p(k)*sigs(:,:,k), 1:length(p), 'UniformOutput', false)), size(obj.KMs(1).A,1), size(obj.KMs(1).A,2), []), 3);
+                    metaVars(:,:,1) = thisSig(cat(3,obj.KMs.initVar), pMahalT);
+                    LEvid(1) = log(Ydists{1}.pdf(Ys(:,1)'));
+                    %End Initialize
+                                        
                     nextMus = @(lastMus) reshape(cell2mat(arrayfun(@(k) obj.KMs(k).A * lastMus, 1:length(obj.KMs), 'UniformOutput', false)), [], length(obj.KMs))';
+                    nextSigs = @(lastSig) reshape(cell2mat(arrayfun(@(k) obj.KMs(k).A * lastSig * obj.KMs(k).A', 1:length(obj.KMs), 'UniformOutput', false)), size(obj.KMs(1).A,1), size(obj.KMs(1).A,2), length(obj.KMs));                    
+                    
+                    eYsigs = @(sigs) reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * sigs(:,:,k) * obj.KMs(k).C', 1:length(obj.KMs), 'UniformOutput', false)), size(obj.KMs(1).C,1), [], length(obj.KMs));
+                    eYs = @(mus) reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * mus(:,k), 1:length(obj.KMs), 'UniformOutput', false)), [], length(obj.KMs))';
                     
                     for i = 2:size(Ys,2)
-                        Ydists{i} = gmdistribution(eYs(metaMus(:,i-1)), Ysigs(i), pMahal(i-1));
-                        mahalT = @(t) Ydists{t}.mahal(Ys(:,t)');
-                        pMahal = @(t) (exp(-mahalT(t)) ./ nansum(exp(-mahalT(t))))';
+                        tempSigs = nextSigs(metaVars(:,:,i-1));
+                        tempMus = nextMus(metaMus(:,i-1));
                         
-                        tempDist = gmdistribution(nextMus(metaMus(:,i-1)), obj.Sigmas(i), pMahal(i));%OBJ.SIGMAS NEEDS TO BE FIXED TO BE THE ACTUAL VARIANCE
-                        cdfFunc = @(X, t) diff(cdf(tempDist, [X-obj.E(X,pMahal(t)); X+obj.E(X,pMahal(t))]));   
-                        metaMus(:,i) = patternsearch(@(X) cdfFunc(X,i), pMahal(i)'*tempDist.mu, [], [], [], [], [], [], [], obj.opts);                        
+                        Ydists{i} = gmdistribution(eYs(tempMus'), eYsigs(tempSigs), pMahalTm1);
+                        pMahalTm1 = pMahalT;
+                        mahalT = Ydists{i}.mahal(Ys(:,i)');
+                        pMahalT = (exp(-mahalT) ./ nansum(exp(-mahalT)))';
+                        
+                        tempDist = gmdistribution(tempMus, tempSigs, pMahalT);%OBJ.SIGMAS NEEDS TO BE FIXED TO BE THE ACTUAL VARIANCE
+                        cdfFunc = @(X) diff(cdf(tempDist, [X-obj.E(X,pMahalT); X+obj.E(X,pMahalT)]));   
+%                         cdfFunc = @(X) arrayfun(@(m) diff(cdf(tempDist, [X(m,:)-obj.E(X(m,:),pMahalT); X(m,:)+obj.E(X(m,:),pMahalT)])), 1:size(X,1));   
+                        metaMus(:,i) = patternsearch(@(X) cdfFunc(X), pMahalT'*tempDist.mu, [], [], [], [], lb(:,i), ub(:,i), [], obj.opts);
+                        metaVars(:,:,i) = thisSig(tempSigs, pMahalT);
+                        LEvid(i) = LEvid(i-1) + log(Ydists{1}.pdf(Ys(:,1)'));
                     end
             end                      
 %                     metaVars = arrayfun(@(t) Sig(t), 1:size(Mus,3), 'UniformOutput', false);
 %                     metaVars = reshape([metaVars{:}], size(Sig(1),1), size(Sig(1),2), []);
 %             metaVars = cumCov(metaMus');            
-%             LEvid = cumsum(arrayfun(@(t) obj.LLike(Ys(:,t), obj.C(ps(:,t))*metaMus(:,t), obj.C(ps(:,t))*metaVars(:,:,t)*obj.C(ps(:,t))'), 1:size(Mus,3)));
-            SEs = cat(1,(metaMus - Zs).^2, NaN(1,size(metaMus,2)));%LEvid);
+%                 LEvid = cumsum(arrayfun(@(t) obj.LLike(Ys(:,t), obj.C(ps(:,t))*metaMus(:,t), obj.C(ps(:,t))*metaVars(:,:,t)*obj.C(ps(:,t))'), 1:size(Mus,3)));
+            
+            SEs = cat(1,(metaMus - Zs).^2, LEvid);
             
             return
         end
