@@ -80,8 +80,11 @@ classdef Agent < handle
                     Ydists{1} = gmdistribution(reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * obj.KMs(k).A * obj.KMs(k).muPrior, 1:length(obj.KMs), 'UniformOutput', false)), [], length(obj.KMs))',...
                                     reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * obj.Sigma(1, k) * obj.KMs(k).C', 1:length(obj.KMs), 'UniformOutput', false)), size(obj.KMs(1).C,1), [], length(obj.KMs)),...
                                     ps(:,1));
-                    mahalT = 1 ./ Ydists{1}.mahal(Ys(:,1)');
+                    mahalT = Ydists{1}.mahal(Ys(:,1)');
                     pMahalT = (exp(-mahalT) ./ nansum(exp(-mahalT)))';
+                    if any(pMahalT <= 0)
+                            pMahalT = pMahalT -  min(pMahalT) + eps;
+                    end
                     pMahalTm1 = pMahalT;
                     
                     thisSig = @(sigs, p) nansum(reshape(cell2mat(arrayfun(@(k) p(k)*sigs(:,:,k), 1:length(p), 'UniformOutput', false)), size(obj.KMs(1).A,1), size(obj.KMs(1).A,2), []), 3);
@@ -101,8 +104,11 @@ classdef Agent < handle
                         
                         Ydists{i} = gmdistribution(eYs(tempMus'), eYsigs(tempSigs), pMahalTm1);
                         pMahalTm1 = pMahalT;
-                        mahalT = 1 ./ Ydists{i}.mahal(Ys(:,i)');
+                        mahalT = Ydists{i}.mahal(Ys(:,i)');
                         pMahalT = (exp(-mahalT) ./ nansum(exp(-mahalT)))';
+                        if any(pMahalT <= 0)
+                                pMahalT = pMahalT -  min(pMahalT) + eps;
+                        end
                         
                         tempDist = gmdistribution(tempMus, tempSigs, pMahalT);%OBJ.SIGMAS NEEDS TO BE FIXED TO BE THE ACTUAL VARIANCE
 %                         cdfFunc = @(X) diff(cdf(tempDist, [X-obj.E(X,pMahalT); X+obj.E(X,pMahalT)]));   
