@@ -41,7 +41,7 @@ classdef Agent < handle
             if ~any(contains(fields(obj), 'CostFun')) || isempty(obj.CostFun)
                 obj.CostFun = 'MSE';
             end
-            obj.opts = optimoptions('patternsearch', 'Display','off', 'MaxTime', .0001);%, 'UseVectorized', true
+            obj.opts = optimoptions('patternsearch', 'Display','off', 'MaxTime', .0001, 'UseVectorized', true);
         end
         
         function [SEs, metaMus, metaVars] = getMetaMus(obj, Mus, Zs, Ys)
@@ -71,18 +71,18 @@ classdef Agent < handle
                     %Initialize
                     metaMus = obj.KMs(1).blankMus(1:end-1,:);
                     tempDist = gmdistribution([obj.KMs.muPrior]', obj.Sigmas(1), ps(:,1));
-                    cdfFunc = @(X, t) diff(cdf(tempDist, [X-obj.E(X,ps(:,1)); X+obj.E(X,ps(:,1))]));   
-                    metaMus(:,1) = patternsearch(@(X) cdfFunc(X,1), ps(:,1)'*tempDist.mu, [], [], [], [], [], [], [], obj.opts);                   
+                    lb = squeeze(max(Mus(:,1:end-1,:),[],1));
+                    ub = squeeze(min(Mus(:,1:end-1,:),[],1));
+%                     cdfFunc = @(X, t) diff(cdf(tempDist, [X-obj.E(X,ps(:,1)); X+obj.E(X,ps(:,1))])); 
+                    cdfFunc = @(X) arrayfun(@(m) diff(cdf(tempDist, [X(m,:)-obj.E(X(m,:),ps(:,1)); X(m,:)+obj.E(X(m,:),ps(:,1))])), 1:size(X,1));   
+                    metaMus(:,1) = patternsearch(@(X) cdfFunc(X,1), ps(:,1)'*tempDist.mu, [], [], [], [], lb(:,1), ub(:,1), [], obj.opts);                   
                     
                     Ydists{1} = gmdistribution(reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * obj.KMs(k).A * obj.KMs(k).muPrior, 1:length(obj.KMs), 'UniformOutput', false)), [], length(obj.KMs))',...
                                     reshape(cell2mat(arrayfun(@(k) obj.KMs(k).C * obj.Sigma(1, k) * obj.KMs(k).C', 1:length(obj.KMs), 'UniformOutput', false)), size(obj.KMs(1).C,1), [], length(obj.KMs)),...
                                     ps(:,1));
-                    mahalT = Ydists{1}.mahal(Ys(:,1)');
+                    mahalT = 1 ./ Ydists{1}.mahal(Ys(:,1)');
                     pMahalT = (exp(-mahalT) ./ nansum(exp(-mahalT)))';
                     pMahalTm1 = pMahalT;
-                             
-                    lb = squeeze(max(Mus(:,1:end-1,:),[],1));
-                    ub = squeeze(min(Mus(:,1:end-1,:),[],1));
                     
                     thisSig = @(sigs, p) nansum(reshape(cell2mat(arrayfun(@(k) p(k)*sigs(:,:,k), 1:length(p), 'UniformOutput', false)), size(obj.KMs(1).A,1), size(obj.KMs(1).A,2), []), 3);
                     metaVars(:,:,1) = thisSig(cat(3,obj.KMs.initVar), pMahalT);
@@ -101,12 +101,12 @@ classdef Agent < handle
                         
                         Ydists{i} = gmdistribution(eYs(tempMus'), eYsigs(tempSigs), pMahalTm1);
                         pMahalTm1 = pMahalT;
-                        mahalT = Ydists{i}.mahal(Ys(:,i)');
+                        mahalT = 1 ./ Ydists{i}.mahal(Ys(:,i)');
                         pMahalT = (exp(-mahalT) ./ nansum(exp(-mahalT)))';
                         
                         tempDist = gmdistribution(tempMus, tempSigs, pMahalT);%OBJ.SIGMAS NEEDS TO BE FIXED TO BE THE ACTUAL VARIANCE
-                        cdfFunc = @(X) diff(cdf(tempDist, [X-obj.E(X,pMahalT); X+obj.E(X,pMahalT)]));   
-%                         cdfFunc = @(X) arrayfun(@(m) diff(cdf(tempDist, [X(m,:)-obj.E(X(m,:),pMahalT); X(m,:)+obj.E(X(m,:),pMahalT)])), 1:size(X,1));   
+%                         cdfFunc = @(X) diff(cdf(tempDist, [X-obj.E(X,pMahalT); X+obj.E(X,pMahalT)]));   
+                        cdfFunc = @(X) arrayfun(@(m) diff(cdf(tempDist, [X(m,:)-obj.E(X(m,:),pMahalT); X(m,:)+obj.E(X(m,:),pMahalT)])), 1:size(X,1));   
                         metaMus(:,i) = patternsearch(@(X) cdfFunc(X), pMahalT'*tempDist.mu, [], [], [], [], lb(:,i), ub(:,i), [], obj.opts);
                         metaVars(:,:,i) = thisSig(tempSigs, pMahalT);
                         LEvid(i) = LEvid(i-1) + log(Ydists{1}.pdf(Ys(:,1)'));

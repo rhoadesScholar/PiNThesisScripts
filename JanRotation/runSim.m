@@ -19,8 +19,8 @@ function [MusLL, Vars] = runSim(As, C, muPrior, initVar, options)%labels, dims, 
         options.agnt = false;
         options.noiseVary = true;
         options.Markov = false;
-        options.TRANS = [0.7 0.3;
-                         0.3 0.7;];
+        options.TRANS = [0.97 0.03;
+                         0.83 0.17;];
         options.EMIS = [1 0;
                         0 1];
         options.SYMBOLS = cat(3, As{:});
