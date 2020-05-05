@@ -3,6 +3,7 @@ import pandas as pd
 import scipy
 from tkinter import filedialog as fd
 from sklearn.cluster import KMeans
+from matplotlib import pyplot as plt
 
 
 def getD2(x, df2):#x is np.ndarray to differentiate; df2 is the square of the step size between successive values in x
@@ -156,20 +157,35 @@ def loadEEG():
     srate = data['file_proc_info'][0,0][5][0,0]
     return raws, bad_chans, fname, indxs, srate
 
-def loadPSD(studyID, age):
-    data = scipy.io.loadmat(fd.askopenfilename(title='Select PSD file'))
-    
-    return PSD, freqs
+def loadPSDs(studyID, age):
+    data = scipy.io.loadmat(fd.askopenfilename(title='Select PSD file for StudyID ' + str(studyID) + ' at ' + str(age) + 'months'))
+    PSDs = data['eeg_wfp'][0,0].mean(2)
+    freqs = data['f'][0,0]
+    return PSDs, freqs
+
+def plotFit(data):
+    freqs = data['freqs']
+    bg = expo_function(freqs, data['bg_params'])
+    peaks = gaussian_function(freqs, data['peak_params'])
+    PSD = data['PSD']
+    fig = plt.figure()
+    plt.title('Spectrum fit for #' + str(data['studyID']) + ' at ' + str(age) + 'months: ' + data['spec_name'] + '_average')
+    plt.plot(freqs, PSD, 'k', label='Original Spectrum', linewidth=2)
+    plt.plot(freqs, bg, 'b--', label='Aperiodic Fit', linewidth=2)
+    plt.plot(freqs, bg + peaks, 'r', label='Full Model Fit', linewidth=2)
+    plt.legend()
+    return
 
 def rhoadesFit(channels=None):
     raws, bad_chans, fname, indxs, srate = loadEEG()
     studyID = get_studyid_from_filename(fname)
     age = get_age_from_filename(fname)
-    PSD, freqs = loadPSD(studyID, age)
+    PSDs, freqs = loadPSD(studyID, age)
     nElect = raws.shape[0] - 1
     if channels == None:
         channels = 'frontal'
     if isinstance(channels, str):
+        spec_name = channels
         if channels == 'frontal':
             if nElect == 128:
                 channels = [24, 124, 13, 112, 11, 28, 117]
@@ -195,6 +211,23 @@ def rhoadesFit(channels=None):
         else:
             print('Unexpected channel selection. Please select from the following: frontal, temporal, whole, or whole2')
             return
+    else:
+        spec_name = 'unnamed'
     selectChans = list()
     [selectChans.append(chan-1) for chan in channels if all(chan != bad_chans) and any(chan == indxs)]
+    PSD = PSDs[selectChans, :].mean(0)
     params, peakNum = getPSDfit(raws[selectChans, :], PSD, freqs, srate)
+    data = dict()
+    data['PSD'] = PSD
+    data['raws'] = raws[selectChans, :]
+    data['freqs'] = freqs
+    data['srate'] = srate
+    data['bg_params'] = params[0:2]
+    data['peak_params'] = params[3:]
+    data['peak_num'] = peakNum
+    data['inds_used'] = selectChans
+    data['studyID'] = studyID
+    data['age'] = age
+    data['spec_name'] = spec_name
+    plotFit(data)
+    return data
