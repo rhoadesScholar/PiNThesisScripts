@@ -1,6 +1,7 @@
 import numpy as np
-import pandas as pd
-import scipy
+import scipy.io
+import scipy.optimize
+import scipy.signal
 from tkinter import filedialog as fd
 from sklearn.cluster import KMeans
 from matplotlib import pyplot as plt
@@ -12,11 +13,15 @@ def getD2(x, df2):#x is np.ndarray to differentiate; df2 is the square of the st
         d2x[j] = (x[j] - 2*x[j+1] + x[j+2])/df2
     return d2x
 
-def findPeaks(raw, srate, min_peak_height=1, min_peak_length=0.1):#raw is pandas.Series object; fs is sampling frequency
+def autocorr(x):
+    result = np.correlate(x, x, mode='full')
+    return result[result.size // 2:]
+
+def findPeaks(raw, srate, min_peak_height=1, min_peak_length=0.1):#raw is EEG signal; srate is sampling frequency
     N = raw.shape[-1]
     freqs = np.fft.rfftfreq(N, 1/srate)
     df = srate/N
-    r = raw.autocorr()
+    r = autocorr(raw)
     S_r = np.abs(np.fft.rfft(r))
     d2S_r = getD2(S_r, df**2)#get second derivative of |FFT(autocorr(raw))|
     H = scipy.signal.hilbert(d2S_r)
@@ -45,6 +50,7 @@ def findPeaks(raw, srate, min_peak_height=1, min_peak_length=0.1):#raw is pandas
     H_thr[thrInds] = H[thrInds]
     peaks, peak_props = scipy.signal.find_peaks(H_thr)#find indices of peaks
     peaks -= 2
+    print('Peaks: ' + str(freqs[peaks]))
     """
     "The peak frequency (Pf) is then computed as the position or index on the frequency axis
     corresponding to the peak value shifted by two positions to the left since the envelope is
@@ -126,12 +132,13 @@ def fitCost(params, PSD, freqs):
 
 def clusterPeaks(peaks):
     ks = list()
-    allPeaks = np.array()
+    allPeaks = []
     for thesePeaks in peaks:
         allPeaks = np.append(allPeaks, thesePeaks)
         ks.append(len(thesePeaks))
-    k = np.mean(ks)
-    clusters = KMeans(n_clusters=k).fit(allPeaks)
+    k = int(np.mean(ks))
+    print('Finding ' + str(k) + ' peaks...')
+    clusters = KMeans(n_clusters=k).fit(allPeaks.reshape(-1, 1))
     return clusters.cluster_centers_
 
 def getPSDfit(raws, PSD, freqs, srate, min_peak_height=1, min_peak_length=0.1):
@@ -180,7 +187,7 @@ def rhoadesFit(channels=None):
     raws, bad_chans, fname, indxs, srate = loadEEG()
     studyID = get_studyid_from_filename(fname)
     age = get_age_from_filename(fname)
-    PSDs, freqs = loadPSD(studyID, age)
+    PSDs, freqs = loadPSDs(studyID, age)
     nElect = raws.shape[0] - 1
     if channels == None:
         channels = 'frontal'
@@ -216,7 +223,15 @@ def rhoadesFit(channels=None):
     selectChans = list()
     [selectChans.append(chan-1) for chan in channels if all(chan != bad_chans) and any(chan == indxs)]
     PSD = PSDs[selectChans, :].mean(0)
-    params, peakNum = getPSDfit(raws[selectChans, :], PSD, freqs, srate)
+    try:
+        params, peakNum = getPSDfit(raws[selectChans, :], PSD, freqs, srate)
+    except:
+        data = dict()
+        data['PSD'] = PSD
+        data['raws'] = raws[selectChans, :]
+        data['freqs'] = freqs
+        data['srate'] = srate
+        return data
     data = dict()
     data['PSD'] = PSD
     data['raws'] = raws[selectChans, :]
