@@ -24,7 +24,7 @@ def findPeaks(raw, srate, min_peak_height=1, min_peak_length=0.1):#raw is EEG si
     r = autocorr(raw)
     S_r = np.abs(np.fft.rfft(r))
     d2S_r = getD2(S_r, df**2)#get second derivative of |FFT(autocorr(raw))|
-    H = scipy.signal.hilbert(d2S_r)
+    H = np.abs(scipy.signal.hilbert(d2S_r))
     #start getting indices of peaks above thresholds:
     thrInds = H > np.nanstd(H)*min_peak_height#get indices above min_peak_height
     #initialize loop variables:
@@ -50,7 +50,7 @@ def findPeaks(raw, srate, min_peak_height=1, min_peak_length=0.1):#raw is EEG si
     H_thr[thrInds] = H[thrInds]
     peaks, peak_props = scipy.signal.find_peaks(H_thr)#find indices of peaks
     peaks -= 2
-    print('Peaks: ' + str(freqs[peaks]))
+    # print('Peaks: ' + str(freqs[peaks]))
     """
     "The peak frequency (Pf) is then computed as the position or index on the frequency axis
     corresponding to the peak value shifted by two positions to the left since the envelope is
@@ -122,11 +122,13 @@ def get_age_from_filename(filename):
     else:
         raise AttributeError('Unexpected filename format: {}'.format(filename))
 
-def fitCost(params, PSD, freqs):
-    bg = expo_function(freqs, params[0:2])
-    peaks = gaussian_function(freqs, params[3:])#consider fixing peak centers
-    cost = (PSD - (bg + peaks))**2#squared error
-    if any(PSD - bg < 0):#make cost huge for ill-fit background curve
+def fitCost(params, args):
+    PSD, freqs = args
+    bg = expo_function(freqs, *params[:3])
+    peaks = gaussian_function(freqs, *params[3:])#consider fixing peak centers
+    costVec = (PSD - (bg + peaks))#error
+    cost = np.dot(costVec, costVec.transpose())#squared error
+    if (PSD - bg < 0).any():#make cost huge for ill-fit background curve
         cost *= 10
     return cost
 
@@ -139,24 +141,31 @@ def clusterPeaks(peaks):
     k = int(np.mean(ks))
     print('Finding ' + str(k) + ' peaks...')
     clusters = KMeans(n_clusters=k).fit(allPeaks.reshape(-1, 1))
+    print('Found peaks.')
     return clusters.cluster_centers_
 
 def getPSDfit(raws, PSD, freqs, srate, min_peak_height=1, min_peak_length=0.1):
     allPeaks = list()
     for raw in raws:
-        peaks, hilbert, pfreqs = findPeaks(raw, srate, min_peak_height=1, min_peak_length=0.1)
+        peaks, hilbert, pfreqs = findPeaks(raw, srate, min_peak_height=min_peak_height, min_peak_length=min_peak_length)
         allPeaks.append(pfreqs[peaks])
     peakFreqs = clusterPeaks(allPeaks)
     #params/x0 = offset, knee, exp, ctr#, hgt#, wid#, ....., ctrN, hgtN, widN for N peaks
-    x0 = [0, max(freqs)/2, 1.5]
+    x0 = [0, freqs.max()/2, 1.5]
     for peak in peakFreqs:
-        x0 = np.append(x0, [peak, 2*min_peak_height, 2*min_peak_length], axis=0)
+        x0 = np.append(x0, [peak[0], 2*min_peak_height, 2*min_peak_length], axis=0)
+    print('Fitting ' + str(len(x0)) + ' parameters...')
     params = scipy.optimize.minimize(fitCost, x0, [PSD, freqs])
+    print('Fit as a fiddle.')
     return params, len(peakFreqs)
 
-def loadEEG():
+def loadEEG(fname=None):
     #get raw EEG
-    data = scipy.io.loadmat(fd.askopenfilename(title='Select EEG file'))
+    if fname == None:
+        print('Select EEG file')
+        data = scipy.io.loadmat(fd.askopenfilename(title='Select EEG file'))
+    else:
+        data = scipy.io.loadmat(fname)
     raws = data['eeg'][0,0]
     bad_chans = data['file_proc_info'][0,0][0][0,0]
     fname = data['file_proc_info'][0,0][1][0,0][0]
@@ -164,30 +173,37 @@ def loadEEG():
     srate = data['file_proc_info'][0,0][5][0,0]
     return raws, bad_chans, fname, indxs, srate
 
-def loadPSDs(studyID, age):
-    data = scipy.io.loadmat(fd.askopenfilename(title='Select PSD file for StudyID ' + str(studyID) + ' at ' + str(age) + 'months'))
+def loadPSDs(studyID, age, fname=None):
+    if fname == None:
+        print('Select PSD file for StudyID ' + str(studyID) + ' at ' + str(age) + 'months')
+        data = scipy.io.loadmat(fd.askopenfilename(title='Select PSD file for StudyID ' + str(studyID) + ' at ' + str(age) + 'months'))
+    else:
+        data = scipy.io.loadmat(fname)
     PSDs = data['eeg_wfp'][0,0].mean(2)
     freqs = data['f'][0,0]
     return PSDs, freqs
 
 def plotFit(data):
     freqs = data['freqs']
-    bg = expo_function(freqs, data['bg_params'])
-    peaks = gaussian_function(freqs, data['peak_params'])
+    bg = expo_function(freqs, *data['bg_params'])
+    peaks = gaussian_function(freqs, *data['peak_params'])
     PSD = data['PSD']
     fig = plt.figure()
-    plt.title('Spectrum fit for #' + str(data['studyID']) + ' at ' + str(age) + 'months: ' + data['spec_name'] + '_average')
-    plt.plot(freqs, PSD, 'k', label='Original Spectrum', linewidth=2)
-    plt.plot(freqs, bg, 'b--', label='Aperiodic Fit', linewidth=2)
-    plt.plot(freqs, bg + peaks, 'r', label='Full Model Fit', linewidth=2)
+    plt.title('Spectrum fit for #' + str(data['studyID']) + ' at ' + str(data['age']) + 'months: ' + data['spec_name'] + '_average')
+    plt.plot(freqs, np.log(PSD), 'k', label='Original Spectrum', linewidth=2)
+    plt.plot(freqs, np.log(bg), 'b--', label='Aperiodic Fit', linewidth=2)
+    plt.plot(freqs, np.log(bg + peaks), 'r', label='Full Model Fit', linewidth=2)
+    plt.xlabel('Frequency')
+    plt.ylabel('log(Power)')
     plt.legend()
+    plt.show()
     return
 
-def rhoadesFit(channels=None):
-    raws, bad_chans, fname, indxs, srate = loadEEG()
+def rhoadesFit(eegName=None, psdName=None, channels=None):
+    raws, bad_chans, fname, indxs, srate = loadEEG(fname=eegName)
     studyID = get_studyid_from_filename(fname)
     age = get_age_from_filename(fname)
-    PSDs, freqs = loadPSDs(studyID, age)
+    PSDs, freqs = loadPSDs(studyID, age, fname=psdName)
     nElect = raws.shape[0] - 1
     if channels == None:
         channels = 'frontal'
@@ -224,8 +240,9 @@ def rhoadesFit(channels=None):
     [selectChans.append(chan-1) for chan in channels if all(chan != bad_chans) and any(chan == indxs)]
     PSD = PSDs[selectChans, :].mean(0)
     try:
-        params, peakNum = getPSDfit(raws[selectChans, :], PSD, freqs, srate)
-    except:
+        fitResult, peakNum = getPSDfit(raws[selectChans, :], PSD, freqs, srate, min_peak_length=.5)
+    except Exception as e:
+        print('Fit failed: ' + str(e))
         data = dict()
         data['PSD'] = PSD
         data['raws'] = raws[selectChans, :]
@@ -235,10 +252,11 @@ def rhoadesFit(channels=None):
     data = dict()
     data['PSD'] = PSD
     data['raws'] = raws[selectChans, :]
-    data['freqs'] = freqs
+    data['freqs'] = np.squeeze(freqs)
     data['srate'] = srate
-    data['bg_params'] = params[0:2]
-    data['peak_params'] = params[3:]
+    data['bg_params'] = fitResult['x'][:3]
+    data['peak_params'] = fitResult['x'][3:]
+    data['fitResult'] = fitResult
     data['peak_num'] = peakNum
     data['inds_used'] = selectChans
     data['studyID'] = studyID
