@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.matlib as mlib
 import scipy.io
 import scipy.optimize
 import scipy.signal
@@ -57,7 +58,7 @@ def expo_function(xs, *params):
     # ys += offset - np.log10(knee + xs**exp)
     # return np.power(10, ys)
     numer = (knee + xs**exp)
-    numer[numer == 0] = np.finfo(float).eps
+    # numer[numer == 0] = np.finfo(float).eps
     ys += 10**offset/numer
     return ys
 
@@ -91,10 +92,19 @@ def fitCost(params, args):
     bg = expo_function(freqs, *params[:3])
     peaks = gaussian_function(freqs, *params[3:])#consider fixing peak centers
     # cost = sum(np.power((PSD - (bg + peaks))/PSD, 2))/len(PSD)#normalized mean squared error
-    cost = np.sqrt(sum(np.power(1 - (bg + peaks)/PSD, 2)) / N)#normalized mean squared error
+    cost = sum(np.power(1 - (bg + peaks)/PSD, 2))#normalized squared error
     cost += np.power(10**6, np.sum(PSD - bg < 0) / N) + np.power(10**6, np.sum(params < 0) / N)#make cost huge for ill-fit background curve & negative params
-    # if cost == np.inf:
-    #     cost = 1/np.finfo(float).eps
+    cost += sum(np.power(np.log(params[params < 1]), 2))#add cost for extremely small values
+    return cost
+
+def fitCostLS(params, PSD, freqs):
+    N = len(freqs)
+    bg = expo_function(freqs, *params[:3])
+    peaks = gaussian_function(freqs, *params[3:])#consider fixing peak centers
+    # cost = sum(np.power((PSD - (bg + peaks))/PSD, 2))/len(PSD)#normalized mean squared error
+    cost = sum(np.power(1 - (bg + peaks)/PSD, 2))#normalized squared error
+    cost += np.power(10**6, np.sum(PSD - bg < 0) / N) + np.power(10**6, np.sum(params < 0) / N)#make cost huge for ill-fit background curve & negative params
+    cost += sum(np.power(np.log(params[params < 1]), 2))#add cost for extremely small values
     return cost
 
 def getHilberts(raw, srate):#raw is EEG signal; srate is sampling frequency
@@ -108,7 +118,7 @@ def getHilberts(raw, srate):#raw is EEG signal; srate is sampling frequency
     return H, df, freqs
 
 def combineHilberts(Hs, df, min_peak_height=1, min_peak_length=0.1):
-    H = np.nanmean(Hs, axis=0)
+    H = np.nanmedian(Hs, axis=0)
     kern = 2*((min_peak_length/df)//2) + 1#get odd kernel size
     kern = int(max([kern, 3]))
     H = scipy.signal.medfilt(H, kernel_size=kern)#apply median filter based on mininum peak size
@@ -134,7 +144,7 @@ def combineHilberts(Hs, df, min_peak_height=1, min_peak_length=0.1):
     thrInds = tempInds
     H_thr = np.zeros_like(H)
     H_thr[thrInds] = H[thrInds]
-    peaks, peak_props = scipy.signal.find_peaks(H_thr)#find indices of peaks
+    peaks, peak_props = scipy.signal.find_peaks(H_thr, distance=kern)#find indices of peaks
     peaks -= 2
     # print('Peaks: ' + str(freqs[peaks]))
     """
@@ -166,15 +176,15 @@ def getPSDfit(raws, PSD, freqs, srate, min_peak_height=1, min_peak_length=0.1, f
         except:
             Hs = [hilbert,]
     peaks, H = combineHilberts(Hs, df, min_peak_height=min_peak_height, min_peak_length=min_peak_length)
-    # peakFreqs = pfreqs[peaks]
-    peakFreqs = peaks/srate
-    # fig = plt.figure()
-    # plt.plot(pfreqs[:len(H)], H, linewidth=2)
-    # plt.xlabel('Frequency')
-    # plt.ylabel('Hilbert')
-    # plt.show()
+    peakFreqs = pfreqs[peaks]
+    # peakFreqs = peaks/srate
+    fig = plt.figure()
+    plt.plot(pfreqs[:len(H)], H, linewidth=2)
+    plt.xlabel('Frequency')
+    plt.ylabel('Hilbert')
+    plt.show()
     #params/x0 = offset, knee, exp, ctr#, hgt#, wid#, ....., ctrN, hgtN, widN for N peaks
-    x0 = [1, freqs.max()/2, 1.5]
+    x0 = [1, 1, 1.5]
     peakNum = 0
     for peak in peakFreqs:
         if peak >= freqRange[0] and peak <= freqRange[1]:
@@ -182,14 +192,18 @@ def getPSDfit(raws, PSD, freqs, srate, min_peak_height=1, min_peak_length=0.1, f
             x0 = np.append(x0, [peak, 2*min_peak_height*np.nanstd(PSD), 10*min_peak_length], axis=0)
     print('Fitting ' + str(len(x0)) + ' parameters...')
     x0_ = []
-    lastFit = {'fun': 1/np.finfo(float).eps}
+    lastFit = {'fun': np.inf}
+    bnds = np.array([0, 100])
+    bgConstraint = scipy.optimize.NonlinearConstraint(lambda x : expo_function(freqs, *x[:3]), np.zeros_like(freqs), PSD)
     while len(x0_) < len(x0):
         x0_ = np.append(x0_, x0[len(x0_):len(x0_)+3], axis=0)
-        fit = scipy.optimize.minimize(fitCost, x0_, [PSD, freqs], method='Nelder-Mead')
-        # if fit['fun'] > lastFit['fun']:
-        #     print('Fitter than a fiddle.')
-        #     return lastFit, peakNum
-        # lastFit = fit
+        fit = scipy.optimize.minimize(fitCost, x0_, [PSD, freqs], constraints=bgConstraint)#method='Nelder-Mead', 
+        # fit = scipy.optimize.differential_evolution(fitCostLS, mlib.repmat(bnds, len(x0_), 1), args=[PSD, freqs], constraints=bgConstraint)
+        # fit = scipy.optimize.least_squares(fitCostLS, x0_, args=[PSD, freqs], bounds=[0,np.inf], verbose=2, loss='soft_l1', constraints=bgConstraint)
+        if fit['fun'] > lastFit['fun'] and len(x0_) > 6:
+            print('Fitter than a fiddle.')
+            return lastFit, peakNum
+        lastFit = fit
         x0_ = fit['x']
     print('Fit as a fiddle.')
     return fit, peakNum
