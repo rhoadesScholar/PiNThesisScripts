@@ -15,49 +15,8 @@ def getD2(x, df2):#x is np.ndarray to differentiate; df2 is the square of the st
 
 def autocorr(x):
     result = np.correlate(x, x, mode='full')
-    return result[result.size // 2:]
-
-def findPeaks(raw, srate, min_peak_height=1, min_peak_length=0.1):#raw is EEG signal; srate is sampling frequency
-    N = raw.shape[-1]
-    freqs = np.fft.rfftfreq(N, 1/srate)
-    df = srate/N
-    r = autocorr(raw)
-    S_r = np.abs(np.fft.rfft(r))
-    d2S_r = getD2(S_r, df**2)#get second derivative of |FFT(autocorr(raw))|
-    H = np.abs(scipy.signal.hilbert(d2S_r))
-    #start getting indices of peaks above thresholds:
-    thrInds = H > np.nanstd(H)*min_peak_height#get indices above min_peak_height
-    #initialize loop variables:
-    isPeak = False
-    thisPeakLength = 0
-    tempInds = thrInds.copy()
-    #
-    for i, ind in enumerate(thrInds):#erase indices for peaks shorter than min_peak_length
-        if ind:
-            if isPeak:
-                thisPeakLength += 1
-            else:#detect peak start
-                peakStart = i
-                isPeak = True
-        else:
-            if isPeak:#detect peak end
-                if thisPeakLength*df < min_peak_length:#test peak length
-                    tempInds[peakStart:i] = False#erase indices of short peaks
-                thisPeakLength = 0#reset variables
-                isPeak = False
-    thrInds = tempInds
-    H_thr = np.zeros_like(H)
-    H_thr[thrInds] = H[thrInds]
-    peaks, peak_props = scipy.signal.find_peaks(H_thr)#find indices of peaks
-    peaks -= 2
-    # print('Peaks: ' + str(freqs[peaks]))
-    """
-    "The peak frequency (Pf) is then computed as the position or index on the frequency axis
-    corresponding to the peak value shifted by two positions to the left since the envelope is
-    computed on the second order derivative or difference function and is therefore shifted
-    by two data points." -"Characterizing Peaks in the EEG Power Spectrum" by Sapien Labs
-    """
-    return peaks, H_thr, freqs
+    result = (result[result.size // 2:] + result[result.size // 2::-1])/2
+    return result
 
 def gaussian_function(xs, *params):
     """Gaussian fitting function.
@@ -95,7 +54,11 @@ def expo_function(xs, *params):
     """
     ys = np.zeros_like(xs)
     offset, knee, exp = params
-    ys += offset - np.log10(knee + xs**exp)
+    # ys += offset - np.log10(knee + xs**exp)
+    # return np.power(10, ys)
+    numer = (knee + xs**exp)
+    numer[numer == 0] = np.finfo(float).eps
+    ys += 10**offset/numer
     return ys
 
 def get_studyid_from_filename(filename):
@@ -124,13 +87,63 @@ def get_age_from_filename(filename):
 
 def fitCost(params, args):
     PSD, freqs = args
+    N = len(freqs)
     bg = expo_function(freqs, *params[:3])
     peaks = gaussian_function(freqs, *params[3:])#consider fixing peak centers
-    costVec = (PSD - (bg + peaks))#error
-    cost = np.dot(costVec, costVec.transpose())#squared error
-    if (PSD - bg < 0).any():#make cost huge for ill-fit background curve
-        cost *= 10
+    # cost = sum(np.power((PSD - (bg + peaks))/PSD, 2))/len(PSD)#normalized mean squared error
+    cost = np.sqrt(sum(np.power(1 - (bg + peaks)/PSD, 2)) / N)#normalized mean squared error
+    cost += np.power(10**6, np.sum(PSD - bg < 0) / N) + np.power(10**6, np.sum(params < 0) / N)#make cost huge for ill-fit background curve & negative params
+    # if cost == np.inf:
+    #     cost = 1/np.finfo(float).eps
     return cost
+
+def getHilberts(raw, srate):#raw is EEG signal; srate is sampling frequency
+    N = raw.shape[-1]
+    freqs = np.fft.rfftfreq(N, 1/srate)
+    df = srate/N
+    r = autocorr(raw)
+    S_r = np.abs(np.fft.rfft(r))
+    d2S_r = getD2(S_r, df**2)#get second derivative of |FFT(autocorr(raw))|
+    H = np.abs(scipy.signal.hilbert(d2S_r))
+    return H, df, freqs
+
+def combineHilberts(Hs, df, min_peak_height=1, min_peak_length=0.1):
+    H = np.nanmean(Hs, axis=0)
+    kern = 2*((min_peak_length/df)//2) + 1#get odd kernel size
+    kern = int(max([kern, 3]))
+    H = scipy.signal.medfilt(H, kernel_size=kern)#apply median filter based on mininum peak size
+    #start getting indices of peaks above thresholds:
+    thrInds = H > np.nanstd(H)*min_peak_height#get indices above min_peak_height
+    #initialize loop variables:
+    isPeak = False
+    thisPeakLength = 0
+    tempInds = thrInds.copy()
+    for i, ind in enumerate(thrInds):#erase indices for peaks shorter than min_peak_length
+        if ind:
+            if isPeak:
+                thisPeakLength += 1
+            else:#detect peak start
+                peakStart = i
+                isPeak = True
+        else:
+            if isPeak:#detect peak end
+                if thisPeakLength*df < min_peak_length:#test peak length
+                    tempInds[peakStart:i] = False#erase indices of short peaks
+                thisPeakLength = 0#reset variables
+                isPeak = False
+    thrInds = tempInds
+    H_thr = np.zeros_like(H)
+    H_thr[thrInds] = H[thrInds]
+    peaks, peak_props = scipy.signal.find_peaks(H_thr)#find indices of peaks
+    peaks -= 2
+    # print('Peaks: ' + str(freqs[peaks]))
+    """
+    "The peak frequency (Pf) is then computed as the position or index on the frequency axis
+    corresponding to the peak value shifted by two positions to the left since the envelope is
+    computed on the second order derivative or difference function and is therefore shifted
+    by two data points." -"Characterizing Peaks in the EEG Power Spectrum" by Sapien Labs
+    """
+    return peaks, H_thr
 
 def clusterPeaks(peaks):
     ks = list()
@@ -144,20 +157,42 @@ def clusterPeaks(peaks):
     print('Found peaks.')
     return clusters.cluster_centers_
 
-def getPSDfit(raws, PSD, freqs, srate, min_peak_height=1, min_peak_length=0.1):
-    allPeaks = list()
+def getPSDfit(raws, PSD, freqs, srate, min_peak_height=1, min_peak_length=0.1, freqRange=[2,100]):
+    Hs = []
     for raw in raws:
-        peaks, hilbert, pfreqs = findPeaks(raw, srate, min_peak_height=min_peak_height, min_peak_length=min_peak_length)
-        allPeaks.append(pfreqs[peaks])
-    peakFreqs = clusterPeaks(allPeaks)
+        hilbert, df, pfreqs = getHilberts(raw, srate)
+        try:
+            Hs = np.append(Hs, [hilbert,], axis=0)
+        except:
+            Hs = [hilbert,]
+    peaks, H = combineHilberts(Hs, df, min_peak_height=min_peak_height, min_peak_length=min_peak_length)
+    # peakFreqs = pfreqs[peaks]
+    peakFreqs = peaks/srate
+    # fig = plt.figure()
+    # plt.plot(pfreqs[:len(H)], H, linewidth=2)
+    # plt.xlabel('Frequency')
+    # plt.ylabel('Hilbert')
+    # plt.show()
     #params/x0 = offset, knee, exp, ctr#, hgt#, wid#, ....., ctrN, hgtN, widN for N peaks
-    x0 = [0, freqs.max()/2, 1.5]
+    x0 = [1, freqs.max()/2, 1.5]
+    peakNum = 0
     for peak in peakFreqs:
-        x0 = np.append(x0, [peak[0], 2*min_peak_height, 2*min_peak_length], axis=0)
+        if peak >= freqRange[0] and peak <= freqRange[1]:
+            peakNum += 1
+            x0 = np.append(x0, [peak, 2*min_peak_height*np.nanstd(PSD), 10*min_peak_length], axis=0)
     print('Fitting ' + str(len(x0)) + ' parameters...')
-    params = scipy.optimize.minimize(fitCost, x0, [PSD, freqs])
+    x0_ = []
+    lastFit = {'fun': 1/np.finfo(float).eps}
+    while len(x0_) < len(x0):
+        x0_ = np.append(x0_, x0[len(x0_):len(x0_)+3], axis=0)
+        fit = scipy.optimize.minimize(fitCost, x0_, [PSD, freqs], method='Nelder-Mead')
+        # if fit['fun'] > lastFit['fun']:
+        #     print('Fitter than a fiddle.')
+        #     return lastFit, peakNum
+        # lastFit = fit
+        x0_ = fit['x']
     print('Fit as a fiddle.')
-    return params, len(peakFreqs)
+    return fit, peakNum
 
 def loadEEG(fname=None):
     #get raw EEG
@@ -180,7 +215,7 @@ def loadPSDs(studyID, age, fname=None):
     else:
         data = scipy.io.loadmat(fname)
     PSDs = data['eeg_wfp'][0,0].mean(2)
-    freqs = data['f'][0,0]
+    freqs = data['f'][0,0][0]
     return PSDs, freqs
 
 def plotFit(data):
@@ -189,17 +224,17 @@ def plotFit(data):
     peaks = gaussian_function(freqs, *data['peak_params'])
     PSD = data['PSD']
     fig = plt.figure()
-    plt.title('Spectrum fit for #' + str(data['studyID']) + ' at ' + str(data['age']) + 'months: ' + data['spec_name'] + '_average')
-    plt.plot(freqs, np.log(PSD), 'k', label='Original Spectrum', linewidth=2)
-    plt.plot(freqs, np.log(bg), 'b--', label='Aperiodic Fit', linewidth=2)
-    plt.plot(freqs, np.log(bg + peaks), 'r', label='Full Model Fit', linewidth=2)
+    plt.title('Spectrum fit for #' + str(data['studyID']) + ' at ' + str(data['age']) + ': ' + data['spec_name'] + '_average')
+    plt.plot(freqs, np.log10(PSD), 'k', label='Original Spectrum', linewidth=2)
+    plt.plot(freqs, np.log10(bg), 'b--', label='Aperiodic Fit', linewidth=2)
+    plt.plot(freqs, np.log10(bg + peaks), 'r', label='Full Model Fit', linewidth=2)
     plt.xlabel('Frequency')
     plt.ylabel('log(Power)')
     plt.legend()
     plt.show()
     return
 
-def rhoadesFit(eegName=None, psdName=None, channels=None):
+def rhoadesFit(eegName=None, psdName=None, channels=None, min_peak_height=1, min_peak_length=0.1, freqRange=[2,100]):
     raws, bad_chans, fname, indxs, srate = loadEEG(fname=eegName)
     studyID = get_studyid_from_filename(fname)
     age = get_age_from_filename(fname)
@@ -239,8 +274,12 @@ def rhoadesFit(eegName=None, psdName=None, channels=None):
     selectChans = list()
     [selectChans.append(chan-1) for chan in channels if all(chan != bad_chans) and any(chan == indxs)]
     PSD = PSDs[selectChans, :].mean(0)
+    start = np.where(freqs == freqRange[0])[0][0]
+    fin = np.where(freqs == freqRange[1])[0][0] + 1
+    PSD = PSD[start:fin]
+    freqs = freqs[start:fin]
     try:
-        fitResult, peakNum = getPSDfit(raws[selectChans, :], PSD, freqs, srate, min_peak_length=.5)
+        fitResult, peakNum = getPSDfit(raws[selectChans, :], PSD, freqs, srate, min_peak_height=min_peak_height, min_peak_length=min_peak_length, freqRange=freqRange)
     except Exception as e:
         print('Fit failed: ' + str(e))
         data = dict()
