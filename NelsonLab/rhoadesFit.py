@@ -92,10 +92,10 @@ def fitCost(params, args):
     bg = expo_function(freqs, *params[:3])
     peaks = gaussian_function(freqs, *params[3:])#consider fixing peak centers
     # cost = sum(np.power((PSD - (bg + peaks))/PSD, 2))/len(PSD)#normalized mean squared error
-    cost = sum(np.power(1 - (bg + peaks)/PSD, 2))#normalized squared error
-    cost += np.power(10**6, np.sum(PSD - bg < 0) / N) + np.power(10**6, np.sum(params < 0) / N)#make cost huge for ill-fit background curve & negative params
-    smallParams = params[params < 1]
-    cost += sum(np.power(np.log(smallParams[smallParams > 0]), 2))#add cost for extremely small values
+    cost = np.sqrt(sum(np.power(1 - (bg + peaks)/PSD, 2)))#normalized root square error
+    cost += np.power(10**8, np.sum(PSD - bg < 0)) / N + np.power(10**4, np.sum(params < 0))#make cost huge for ill-fit background curve & negative params
+    smallParams = params[np.abs(params) < 1]
+    cost += sum(np.abs(np.log(smallParams[smallParams > 0]))) / len(params)#add cost for extremely small values
     return cost
 
 def fitCostLS(params, PSD, freqs):
@@ -104,9 +104,9 @@ def fitCostLS(params, PSD, freqs):
     peaks = gaussian_function(freqs, *params[3:])#consider fixing peak centers
     # cost = sum(np.power((PSD - (bg + peaks))/PSD, 2))/len(PSD)#normalized mean squared error
     cost = sum(np.power(1 - (bg + peaks)/PSD, 2))#normalized squared error
-    cost += np.power(10**6, np.sum(PSD - bg < 0) / N) + np.power(10**6, np.sum(params < 0) / N)#make cost huge for ill-fit background curve & negative params
-    smallParams = params[params < 1]
-    cost += sum(np.power(np.log(smallParams[smallParams > 0]), 2))#add cost for extremely small values
+    cost += np.power(10**8, np.sum(PSD - bg < 0)) / N + np.power(10**4, np.sum(params < 0))#make cost huge for ill-fit background curve & negative params
+    smallParams = params[np.abs(params) < 1]
+    cost += sum(np.power(np.log(smallParams[smallParams > 0]), 2)) / len(params)#add cost for extremely small values
     return cost
 
 def getHilberts(raw, srate):#raw is EEG signal; srate is sampling frequency
@@ -169,6 +169,18 @@ def clusterPeaks(peaks):
     print('Found peaks.')
     return clusters.cluster_centers_
 
+def findNextPeak(PSD, params, freqs, wid):
+    bg = expo_function(freqs, *params[:3])
+    if len(params) > 3:
+        peaks = gaussian_function(freqs, *params[3:])
+        fit = bg + peaks
+    else:
+        fit = bg
+    dif = PSD/fit
+    ind = np.where(dif == np.max(dif))[0][0]
+    hgt = (PSD - fit)[ind]
+    return [freqs[ind], hgt, wid]
+
 def getPSDfit(raws, PSD, freqs, srate, min_peak_height=1, min_peak_length=0.1, freqRange=[2,100]):
     Hs = []
     for raw in raws:
@@ -186,19 +198,24 @@ def getPSDfit(raws, PSD, freqs, srate, min_peak_height=1, min_peak_length=0.1, f
     # plt.ylabel('Hilbert')
     # plt.show()
     #params/x0 = offset, knee, exp, ctr#, hgt#, wid#, ....., ctrN, hgtN, widN for N peaks
-    x0 = [1, 1, 1.5]
+    x0 = [1, 0, 1.5]
     peakNum = 0
     for peak in peakFreqs:
         if peak >= freqRange[0] and peak <= freqRange[1]:
             peakNum += 1
             x0 = np.append(x0, [peak, 2*min_peak_height*np.nanstd(PSD), 10*min_peak_length], axis=0)
+
     print('Fitting ' + str(len(x0)) + ' parameters...')
     x0_ = []
     lastFit = {'fun': np.inf}
-    bnds = np.array([0, 100])
+    # bnds = np.array([0, 100])
     bgConstraint = scipy.optimize.NonlinearConstraint(lambda x : expo_function(freqs, *x[:3]), np.zeros_like(freqs), PSD)
     while len(x0_) < len(x0):
-        x0_ = np.append(x0_, x0[len(x0_):len(x0_)+3], axis=0)
+        # x0_ = np.append(x0_, x0[len(x0_):len(x0_)+3], axis=0)
+        if len(x0_) < 3:
+            x0_ = np.append(x0_, x0[len(x0_):len(x0_)+3], axis=0)
+        else:
+            x0_ = np.append(x0_, findNextPeak(PSD, x0_, freqs, x0[len(x0_)+2]), axis=0)
         fit = scipy.optimize.minimize(fitCost, x0_, [PSD, freqs], constraints=bgConstraint)#method='Nelder-Mead',
         # fit = scipy.optimize.differential_evolution(fitCostLS, mlib.repmat(bnds, len(x0_), 1), args=[PSD, freqs], constraints=bgConstraint)
         # fit = scipy.optimize.least_squares(fitCostLS, x0_, args=[PSD, freqs], bounds=[0,np.inf], verbose=2, loss='soft_l1')
